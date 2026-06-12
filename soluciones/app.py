@@ -774,10 +774,10 @@ def init_db():
         print('  Malena_Baltazar       Hunter1235       Comercial')
         print('  José_Ortega           Hunter1236       Comercial')
 
+with app.app_context():
+    init_db()
 
 if __name__ == '__main__':
-    with app.app_context():
-        init_db()
     port  = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
     app.run(host='0.0.0.0', port=port, debug=debug)
