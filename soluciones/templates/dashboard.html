@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Seguimiento SD{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Dashboard</h2>
+    <p class="page-sub">Resumen general de solicitudes</p>
+  </div>
+  {% if current_user.rol in ('comercial','lider_comercial') %}
+  <a href="{{ url_for('nueva_solicitud') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i> Nueva Solicitud
+  </a>
+  {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-icon"><i class="bi bi-file-text"></i></div>
+      <div class="kpi-value">{{ abiertas }}</div>
+      <div class="kpi-label">Abiertas</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon"><i class="bi bi-check-circle"></i></div>
+      <div class="kpi-value">{{ cerradas }}</div>
+      <div class="kpi-label">Cerradas</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-red">
+      <div class="kpi-icon"><i class="bi bi-exclamation-triangle"></i></div>
+      <div class="kpi-value">{{ vencidas }}</div>
+      <div class="kpi-label">Vencidas</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-purple">
+      <div class="kpi-icon"><i class="bi bi-currency-dollar"></i></div>
+      <div class="kpi-value">${{ "{:,.0f}".format(monto_total) }}</div>
+      <div class="kpi-label">Monto Potencial</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-teal">
+      <div class="kpi-icon"><i class="bi bi-clock"></i></div>
+      <div class="kpi-value">{{ promedio_atencion }}<span class="kpi-unit">días</span></div>
+      <div class="kpi-label">Tiempo Promedio Cierre</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-icon"><i class="bi bi-bar-chart"></i></div>
+      <div class="kpi-value">{{ total }}</div>
+      <div class="kpi-label">Total Solicitudes</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-5">
+    <div class="chart-card">
+      <div class="chart-title">Por Estatus</div>
+      <div class="chart-wrap"><canvas id="chartEstatus"></canvas></div>
+    </div>
+  </div>
+  {% if current_user.rol in ('lider_comercial','lider_soluciones') and por_comercial %}
+  <div class="col-lg-4">
+    <div class="chart-card">
+      <div class="chart-title">Por Comercial</div>
+      <div class="chart-wrap"><canvas id="chartComercial"></canvas></div>
+    </div>
+  </div>
+  {% endif %}
+  {% if current_user.rol in ('lider_comercial','lider_soluciones') and por_ingeniero %}
+  <div class="col-lg-3">
+    <div class="chart-card">
+      <div class="chart-title">Carga por Ingeniero</div>
+      <div class="chart-wrap"><canvas id="chartIngeniero"></canvas></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="section-card">
+  <div class="section-card-header">
+    <h5 class="mb-0">Actividad Reciente</h5>
+    <a href="{{ url_for('solicitudes') }}" class="btn btn-sm btn-outline-primary">Ver todas</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Folio</th><th>Cliente</th><th>Estatus</th><th>Prioridad</th><th>Días</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in ultimas %}
+        <tr class="{% if s.dias_sin_movimiento() > 15 %}row-danger{% elif s.dias_sin_movimiento() > 7 %}row-warning{% endif %}">
+          <td><span class="folio-badge">{{ s.folio }}</span></td>
+          <td>{{ s.cliente }}</td>
+          <td><span class="badge estatus-{{ s.estatus|replace(' ','_') }}">{{ s.estatus }}</span></td>
+          <td><span class="prioridad-{{ s.prioridad.lower() }}">{{ s.prioridad }}</span></td>
+          <td>
+            {% set dias = s.dias_sin_movimiento() %}
+            <span class="{% if dias > 15 %}text-danger fw-bold{% elif dias > 7 %}text-warning-dark fw-bold{% endif %}">{{ dias }}d</span>
+          </td>
+          <td><a href="{{ url_for('detalle_solicitud', folio=s.folio) }}" class="btn btn-xs btn-outline-secondary">Ver</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Sin solicitudes aún.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Paleta de marca dark mode
+const COLORS = ['#4BB8C8','#AECA00','#F59E0B','#EF4444','#2E9BAA','#7FAD00','#6B7280'];
+Chart.defaults.color = '#9CA3AF';
+Chart.defaults.borderColor = '#2A3040';
+{% if por_estatus %}
+new Chart(document.getElementById('chartEstatus'), {
+  type: 'doughnut',
+  data: { labels: {{ por_estatus.keys()|list|tojson }},
+          datasets: [{ data: {{ por_estatus.values()|list|tojson }}, backgroundColor: COLORS, borderWidth: 2 }] },
+  options: { responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { padding: 10, font: { size: 11 } } } } }
+});
+{% endif %}
+{% if current_user.rol in ('lider_comercial','lider_soluciones') and por_comercial %}
+new Chart(document.getElementById('chartComercial'), {
+  type: 'bar',
+  data: { labels: {{ por_comercial.keys()|list|tojson }},
+          datasets: [{ label: 'Solicitudes', data: {{ por_comercial.values()|list|tojson }},
+            backgroundColor: '#4BB8C8', borderRadius: 6 }] },
+  options: { responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+});
+{% endif %}
+{% if current_user.rol in ('lider_comercial','lider_soluciones') and por_ingeniero %}
+new Chart(document.getElementById('chartIngeniero'), {
+  type: 'bar',
+  data: { labels: {{ por_ingeniero.keys()|list|tojson }},
+          datasets: [{ label: 'Asignadas', data: {{ por_ingeniero.values()|list|tojson }},
+            backgroundColor: '#AECA00', borderRadius: 6 }] },
+  options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+});
+{% endif %}
+</script>
+{% endblock %}

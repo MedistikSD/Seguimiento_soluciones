@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if accion == 'editar' else 'Nuevo' }} Usuario — Seguimiento SD{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">{{ 'Editar Usuario' if accion == 'editar' else 'Nuevo Usuario' }}</h2>
+    <p class="page-sub">{{ usuario.nombre if usuario else 'Completa los datos del nuevo usuario' }}</p>
+  </div>
+  <a href="{{ url_for('admin_usuarios') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row">
+  <div class="col-lg-6">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h5 class="mb-0">
+          <i class="bi bi-{{ 'pencil' if accion == 'editar' else 'person-plus' }} me-2"></i>
+          {{ 'Editar' if accion == 'editar' else 'Crear' }} Usuario
+        </h5>
+      </div>
+      <form method="POST" class="p-4">
+        <div class="row g-3">
+
+          <div class="col-12">
+            <label class="form-label required">Nombre completo</label>
+            <input type="text" name="nombre" class="form-control"
+                   value="{{ usuario.nombre if usuario else '' }}"
+                   placeholder="Ej. Juan Pérez Ramírez" required
+                   {% if accion == 'editar' %}id="inputNombre"{% endif %}>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label required">Usuario (login)</label>
+            <input type="text" name="username" class="form-control"
+                   value="{{ usuario.username if usuario else '' }}"
+                   placeholder="ej. jperez (sin espacios, minúsculas)"
+                   pattern="[a-z0-9_]+" title="Solo letras minúsculas, números y guión bajo"
+                   required {% if accion == 'editar' %}id="inputUsername"{% endif %}>
+            {% if accion == 'editar' %}
+            <div class="form-text">
+              <i class="bi bi-info-circle me-1"></i>
+              Si cambias el usuario, la persona deberá usar el nuevo nombre para iniciar sesión.
+            </div>
+            {% else %}
+            <div class="form-text">Solo letras minúsculas, números y guión bajo. Sin espacios.</div>
+            {% endif %}
+          </div>
+
+          {% if accion == 'nuevo' %}
+          <div class="col-12">
+            <label class="form-label required">Rol</label>
+            <select name="rol" class="form-select" required>
+              <option value="">— Selecciona un rol —</option>
+              {% for r in roles_permitidos %}
+              <option value="{{ r }}">{{ ROLES_LABEL[r] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <div class="col-12">
+            <label class="form-label {{ 'required' if accion == 'nuevo' }}">
+              Contraseña
+              {% if accion == 'editar' %}
+                <span class="text-muted fw-normal">(dejar vacío para no cambiar)</span>
+              {% endif %}
+            </label>
+            <input type="password" name="password" class="form-control"
+                   placeholder="Mínimo 6 caracteres"
+                   {{ 'required' if accion == 'nuevo' }}>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label {{ 'required' if accion == 'nuevo' }}">Confirmar contraseña</label>
+            <input type="password" name="confirm" class="form-control"
+                   placeholder="Repite la contraseña"
+                   {{ 'required' if accion == 'nuevo' }}>
+          </div>
+
+          {% if accion == 'editar' %}
+          <div class="col-12">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="activo" id="activo"
+                     {% if usuario.activo %}checked{% endif %}>
+              <label class="form-check-label" for="activo">Usuario activo</label>
+            </div>
+            <div class="form-text">Los usuarios inactivos no pueden iniciar sesión.</div>
+          </div>
+          {% endif %}
+
+        </div>
+
+        <hr class="my-4">
+        <div class="d-flex justify-content-end gap-2">
+          <a href="{{ url_for('admin_usuarios') }}" class="btn btn-outline-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-{{ 'floppy' if accion == 'editar' else 'person-plus' }} me-1"></i>
+            {{ 'Guardar cambios' if accion == 'editar' else 'Crear Usuario' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-4 mt-4 mt-lg-0">
+    <div class="section-card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-shield-check me-1"></i>Consejos de seguridad</h6>
+      <ul class="list-unstyled" style="font-size:13px; color: var(--text-muted);">
+        <li class="mb-2"><i class="bi bi-check2 text-success me-1"></i>Usa contraseñas de al menos 8 caracteres</li>
+        <li class="mb-2"><i class="bi bi-check2 text-success me-1"></i>Combina letras, números y símbolos</li>
+        <li class="mb-2"><i class="bi bi-check2 text-success me-1"></i>No compartas contraseñas entre usuarios</li>
+        <li class="mb-2"><i class="bi bi-check2 text-success me-1"></i>Desactiva usuarios que ya no estén en el equipo</li>
+      </ul>
+    </div>
+
+    {% if accion == 'editar' %}
+    <div class="section-card p-4 mt-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-person-vcard me-1"></i>Datos actuales</h6>
+      <div class="info-item mb-2">
+        <span class="info-label">Nombre</span>
+        <span>{{ usuario.nombre }}</span>
+      </div>
+      <div class="info-item mb-2">
+        <span class="info-label">Usuario</span>
+        <code>{{ usuario.username }}</code>
+      </div>
+      <div class="info-item mb-2">
+        <span class="info-label">Rol</span>
+        <span class="badge rol-badge-{{ usuario.rol }}">{{ ROLES_LABEL[usuario.rol] }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Estatus</span>
+        <span class="badge {{ 'bg-success' if usuario.activo else 'bg-secondary' }}">
+          {{ 'Activo' if usuario.activo else 'Inactivo' }}
+        </span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if accion == 'nuevo' %}
+<script>
+// Auto-generar username a partir del nombre
+const inputNombre   = document.querySelector('[name=nombre]');
+const inputUsername = document.querySelector('[name=username]');
+let userModificado  = false;
+
+inputUsername.addEventListener('input', () => { userModificado = true; });
+
+inputNombre.addEventListener('input', () => {
+  if (userModificado) return;
+  const slug = inputNombre.value
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quita acentos
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+    .substring(0, 20);
+  inputUsername.value = slug;
+});
+</script>
+{% endif %}
+{% endblock %}

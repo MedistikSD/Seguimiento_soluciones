@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+{% block title %}{{ sol.folio }} — Seguimiento SD{% endblock %}
+
+{% block content %}
+{% set puede_editar_sol = current_user.rol in ('ingeniero','lider_soluciones') and (current_user.rol == 'lider_soluciones' or sol.responsable_id == current_user.id) %}
+{% set puede_lider_sol  = current_user.rol == 'lider_soluciones' %}
+{% set puede_doc_com    = current_user.rol in ('comercial','lider_comercial','lider_soluciones','aux_comercial') %}
+{% set puede_doc_sol    = current_user.rol in ('ingeniero','lider_comercial','lider_soluciones','aux_comercial') %}
+
+{% set docs_com  = sol.documentos.filter_by(tipo_documento='comercial',  activo=True).all() %}
+{% set docs_sol  = sol.documentos.filter_by(tipo_documento='soluciones', activo=True).all() %}
+
+<div class="page-header">
+  <div>
+    <h2 class="page-title">
+      <span class="folio-badge folio-lg">{{ sol.folio }}</span>
+      <span class="ms-2 badge estatus-{{ sol.estatus|replace(' ','_') }} fs-6">{{ sol.estatus }}</span>
+    </h2>
+    <p class="page-sub">{{ sol.cliente }} · Creada el {{ sol.fecha_captura.strftime('%d/%m/%Y') }}</p>
+  </div>
+  <a href="{{ url_for('solicitudes') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+{% set dias = sol.dias_sin_movimiento() %}
+{% if dias > 15 and sol.estatus != 'Cerrada' %}
+<div class="alert alert-danger d-flex align-items-center mb-4">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  Esta solicitud lleva <strong>&nbsp;{{ dias }} días&nbsp;</strong> sin movimiento. Requiere atención urgente.
+</div>
+{% elif dias > 7 and sol.estatus != 'Cerrada' %}
+<div class="alert alert-warning d-flex align-items-center mb-4">
+  <i class="bi bi-clock-fill me-2"></i>
+  Esta solicitud lleva <strong>&nbsp;{{ dias }} días&nbsp;</strong> sin movimiento.
+</div>
+{% endif %}
+
+<!-- ── PESTAÑAS ──────────────────────────────────────────── -->
+<ul class="nav nav-tabs-custom mb-4" id="detalleTabs">
+  <li class="nav-item">
+    <a class="nav-tab-link active" data-bs-toggle="tab" href="#tab-detalle">
+      <i class="bi bi-file-text me-1"></i>Detalle
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-tab-link" data-bs-toggle="tab" href="#tab-archivos" id="tabArchivosLink">
+      <i class="bi bi-paperclip me-1"></i>Archivos
+      {% set total_docs = docs_com|length + docs_sol|length %}
+      {% if total_docs > 0 %}
+        <span class="tab-badge">{{ total_docs }}</span>
+      {% endif %}
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+<!-- ══ TAB DETALLE ══════════════════════════════════════════ -->
+<div class="tab-pane fade show active" id="tab-detalle">
+<div class="row g-4">
+  <div class="col-lg-8">
+
+    <!-- Info Comercial -->
+    <div class="section-card mb-4">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-briefcase me-2"></i>Información Comercial</h5>
+        <span class="prioridad-{{ sol.prioridad.lower() }}">{{ sol.prioridad }}</span>
+      </div>
+      <div class="p-4">
+        <div class="row g-3">
+          <div class="col-sm-6"><div class="info-item"><span class="info-label">Comercial</span><span>{{ sol.hunter.nombre }}</span></div></div>
+          <div class="col-sm-6"><div class="info-item"><span class="info-label">Fecha solicitado</span><span>{{ sol.fecha_solicitud.strftime('%d/%m/%Y') }}</span></div></div>
+          <div class="col-sm-6"><div class="info-item"><span class="info-label">Cliente</span><span class="fw-semibold">{{ sol.cliente }}</span></div></div>
+          <div class="col-sm-6"><div class="info-item"><span class="info-label">Ingeniero Responsable</span>
+            <span>{{ sol.responsable.nombre if sol.responsable else '<span class="text-muted">Sin asignar</span>'|safe }}</span>
+          </div></div>
+          <div class="col-12"><div class="info-item"><span class="info-label">Tema</span><span>{{ sol.tema }}</span></div></div>
+          {% if sol.monto_oportunidad %}
+          <div class="col-sm-6"><div class="info-item"><span class="info-label">Monto potencial</span>
+            <span class="fw-bold text-success">${{ "{:,.0f}".format(sol.monto_oportunidad) }} MXN</span>
+          </div></div>
+          {% endif %}
+          {% if sol.comentarios_comerciales %}
+          <div class="col-12"><div class="info-item"><span class="info-label">Comentarios comerciales</span>
+            <p class="mb-0 text-muted">{{ sol.comentarios_comerciales }}</p>
+          </div></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección Ingeniería -->
+    <div class="section-card mb-4">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Sección Ingeniería</h5>
+        {% if sol.checkboxes_completos() %}
+          <span class="badge bg-success"><i class="bi bi-check-all me-1"></i>Información Completa</span>
+        {% else %}
+          {% set cnt = [sol.historial_surtido, sol.inventario, sol.maestro_productos, sol.historial_recepcion, sol.cuestionario_logistico]|select|list|length %}
+          <span class="text-muted small">{{ cnt }}/5 documentos</span>
+        {% endif %}
+      </div>
+      {% if puede_editar_sol %}<form method="POST" action="{{ url_for('actualizar_solicitud', folio=sol.folio) }}">{% endif %}
+      <div class="p-4">
+        <div class="row g-3 mb-4">
+          {% set checkboxes = [
+            ('historial_surtido','Historial de Surtido','bi-clock-history'),
+            ('inventario','Inventario','bi-boxes'),
+            ('maestro_productos','Maestro de Productos','bi-grid'),
+            ('historial_recepcion','Historial de Recepción','bi-truck'),
+            ('cuestionario_logistico','Cuestionario Logístico','bi-clipboard-check'),
+          ] %}
+          {% for campo, label, icon in checkboxes %}
+          {% set val = sol|attr(campo) %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="checkbox-card {% if val %}checked{% endif %}">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="{{ campo }}" id="cb_{{ campo }}"
+                       {% if val %}checked{% endif %}
+                       {% if not puede_editar_sol %}disabled{% endif %}>
+                <label class="form-check-label" for="cb_{{ campo }}">
+                  <i class="bi {{ icon }} me-1"></i>{{ label }}
+                </label>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label">Fecha Compromiso de Entrega</label>
+            <input type="date" name="fecha_compromiso" class="form-control"
+                   value="{{ sol.fecha_compromiso.strftime('%Y-%m-%d') if sol.fecha_compromiso else '' }}"
+                   {% if not puede_editar_sol %}disabled{% endif %}>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Cambiar Estatus</label>
+            <select name="estatus" class="form-select" {% if not puede_editar_sol %}disabled{% endif %}>
+              {% for e in ['Capturada','Asignada','En Análisis','Pendiente Información Cliente','Información Completa','Propuesta Enviada'] %}
+              <option value="{{ e }}" {% if sol.estatus == e %}selected{% endif %}>{{ e }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if puede_editar_sol %}
+        <div class="mt-4">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1"></i>Guardar cambios</button>
+        </div>
+        {% endif %}
+      </div>
+      {% if puede_editar_sol %}</form>{% endif %}
+    </div>
+
+    <!-- Entrega al cliente -->
+    <div class="section-card mb-4">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-envelope-check me-2"></i>Entrega al Cliente</h5>
+      </div>
+      <div class="p-4">
+        {% if sol.fecha_envio_cliente %}
+        <div class="delivery-done">
+          <i class="bi bi-check-circle-fill text-success fs-4 me-2"></i>
+          <div>
+            <div class="fw-semibold">Propuesta enviada el {{ sol.fecha_envio_cliente.strftime('%d/%m/%Y %H:%M') }}</div>
+            <div class="text-muted small">por {{ sol.usuario_envio.nombre if sol.usuario_envio else '—' }}</div>
+            <div class="mt-1">{{ sol.comentarios_envio }}</div>
+          </div>
+        </div>
+        {% elif puede_editar_sol %}
+        <form method="POST" action="{{ url_for('registrar_envio', folio=sol.folio) }}">
+          <div class="mb-3">
+            <label class="form-label">Comentarios del envío <span class="text-danger">*</span></label>
+            <textarea name="comentarios_envio" class="form-control" rows="2" required
+                      placeholder="Ej. Se envió propuesta económica al cliente vía correo."></textarea>
+          </div>
+          <button type="submit" class="btn btn-success"><i class="bi bi-send me-1"></i>Registrar Envío</button>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">Aún no se ha registrado envío al cliente.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Comentarios -->
+    <div class="section-card mb-4">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-chat-dots me-2"></i>Comentarios</h5>
+      </div>
+      <div class="p-4">
+        {% for c in sol.comentarios %}
+        <div class="comment-item">
+          <div class="comment-avatar">{{ c.usuario.nombre[0].upper() }}</div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <strong>{{ c.usuario.nombre }}</strong>
+              <span class="text-muted small ms-2">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+            </div>
+            <p class="comment-text">{{ c.texto }}</p>
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted">Sin comentarios aún.</p>
+        {% endfor %}
+        <form method="POST" action="{{ url_for('agregar_comentario', folio=sol.folio) }}" class="mt-3">
+          <div class="input-group">
+            <textarea name="texto" class="form-control" rows="2" placeholder="Escribe un comentario…" required></textarea>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i></button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div><!-- /col-lg-8 -->
+
+  <!-- Columna lateral -->
+  <div class="col-lg-4">
+
+    {% if puede_lider_sol %}
+    <div class="section-card mb-4">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>Acciones Líder</h5>
+      </div>
+      <div class="p-4">
+        <form method="POST" action="{{ url_for('reasignar_solicitud', folio=sol.folio) }}" class="mb-3">
+          <label class="form-label fw-semibold">Reasignar Ingeniero</label>
+          <div class="input-group">
+            <select name="responsable_id" class="form-select form-select-sm">
+              <option value="">— Sin asignar —</option>
+              {% for ing in ingenieros %}
+              <option value="{{ ing.id }}" {% if sol.responsable_id == ing.id %}selected{% endif %}>{{ ing.nombre }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
+          </div>
+        </form>
+        {% if sol.estatus != 'Cerrada' %}
+        <form method="POST" action="{{ url_for('cerrar_solicitud', folio=sol.folio) }}"
+              onsubmit="return confirm('¿Confirmas cerrar esta solicitud?')">
+          <button type="submit" class="btn btn-danger w-100"><i class="bi bi-x-circle me-1"></i>Cerrar Solicitud</button>
+        </form>
+        {% else %}
+        <div class="alert alert-secondary py-2 mb-0 text-center">
+          <i class="bi bi-lock me-1"></i>Solicitud cerrada
+          {% if sol.fecha_cierre %} el {{ sol.fecha_cierre.strftime('%d/%m/%Y') }}{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="section-card mb-4">
+      <div class="section-card-header"><h5 class="mb-0">Resumen</h5></div>
+      <div class="p-4">
+        <div class="info-item mb-2"><span class="info-label">Captura</span><span>{{ sol.fecha_captura.strftime('%d/%m/%Y') }}</span></div>
+        <div class="info-item mb-2"><span class="info-label">Días desde captura</span><span>{{ sol.dias_desde_captura() }}d</span></div>
+        <div class="info-item mb-2"><span class="info-label">Días sin movimiento</span>
+          <span class="{% if dias > 15 %}text-danger fw-bold{% elif dias > 7 %}text-warning-dark fw-bold{% endif %}">{{ dias }}d</span>
+        </div>
+        {% if sol.fecha_compromiso %}
+        <div class="info-item mb-2"><span class="info-label">Fecha Compromiso</span><span>{{ sol.fecha_compromiso.strftime('%d/%m/%Y') }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-header"><h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Bitácora</h5></div>
+      <div class="p-4">
+        <div class="timeline">
+          {% for b in sol.bitacora|list|reverse %}
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-content">
+              <div class="tl-date">{{ b.created_at.strftime('%d/%m/%Y %H:%M') }}</div>
+              <div class="tl-action">{{ b.accion }}</div>
+            </div>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">Sin actividad registrada.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% if current_user.rol == 'lider_comercial' %}
+    <div class="section-card mt-4 border-danger-subtle">
+      <div class="section-card-header" style="background:rgba(239,68,68,.08);">
+        <h5 class="mb-0 text-danger"><i class="bi bi-trash me-2"></i>Zona de peligro</h5>
+      </div>
+      <div class="p-4">
+        <p class="text-muted small mb-3">Acción <strong>permanente e irreversible</strong>. Elimina también comentarios y bitácora.</p>
+        <form method="POST" action="{{ url_for('eliminar_solicitud', folio=sol.folio) }}"
+              onsubmit="return confirm('⚠️ ¿Eliminar permanentemente {{ sol.folio }} ({{ sol.cliente }})?\n\nEsta acción NO se puede deshacer.')">
+          <button type="submit" class="btn btn-outline-danger w-100">
+            <i class="bi bi-trash3 me-1"></i>Eliminar Solicitud Permanentemente
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div><!-- /row -->
+</div><!-- /tab-pane detalle -->
+
+
+<!-- ══ TAB ARCHIVOS ══════════════════════════════════════════ -->
+<div class="tab-pane fade" id="tab-archivos">
+<div class="row g-4">
+
+  {% for tipo, docs, puede_subir, label, icon, color in [
+    ('comercial',  docs_com, puede_doc_com, 'Documentos Comerciales',  'bi-briefcase',  'turquesa'),
+    ('soluciones', docs_sol, puede_doc_sol, 'Documentos Soluciones',   'bi-gear-fill',  'verde'),
+  ] %}
+  <div class="col-12">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h5 class="mb-0">
+          <i class="bi {{ icon }} me-2" style="color:var(--{{ color }})"></i>{{ label }}
+          <span class="ms-2 badge" style="background:rgba(75,184,200,.15);color:var(--{{ color }})">
+            {{ docs|length }} archivo{% if docs|length != 1 %}s{% endif %}
+          </span>
+        </h5>
+        {% if puede_subir %}
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                data-bs-target="#modalSubir_{{ tipo }}">
+          <i class="bi bi-upload me-1"></i>Subir archivo
+        </button>
+        {% endif %}
+      </div>
+
+      <div class="table-responsive">
+        {% if docs %}
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Archivo</th><th>Ver.</th><th>Subido por</th><th>Fecha</th><th style="width:180px">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for doc in docs %}
+            <tr>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="file-icon ext-{{ doc.nombre_original.rsplit('.',1)[1].lower() if '.' in doc.nombre_original else 'bin' }}">
+                    {{ doc.nombre_original.rsplit('.',1)[1].upper() if '.' in doc.nombre_original else '?' }}
+                  </span>
+                  <span class="fw-medium">{{ doc.nombre_original }}</span>
+                </div>
+              </td>
+              <td><span class="version-badge">v{{ doc.version }}</span></td>
+              <td>{{ doc.usuario.nombre }}</td>
+              <td>{{ doc.fecha_subida.strftime('%d/%m/%Y %H:%M') }}</td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="{{ url_for('descargar_documento', folio=sol.folio, doc_id=doc.id) }}"
+                     class="btn btn-xs btn-outline-primary" title="Descargar">
+                    <i class="bi bi-download"></i>
+                  </a>
+                  {% if puede_subir %}
+                  <button class="btn btn-xs btn-outline-secondary" title="Reemplazar"
+                          data-bs-toggle="modal"
+                          data-bs-target="#modalReemplazar_{{ doc.id }}">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </button>
+                  <form method="POST"
+                        action="{{ url_for('eliminar_documento', folio=sol.folio, doc_id=doc.id) }}"
+                        onsubmit="return confirm('¿Eliminar {{ doc.nombre_original }}?')">
+                    <button type="submit" class="btn btn-xs btn-outline-danger" title="Eliminar">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-folder2-open fs-1 d-block mb-2 opacity-25"></i>
+          Sin archivos en esta sección.
+          {% if puede_subir %}<br><small>Usa el botón "Subir archivo" para agregar.</small>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Subir -->
+  <div class="modal fade" id="modalSubir_{{ tipo }}" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background:var(--bg-card);border:1px solid var(--bg-border);">
+        <div class="modal-header" style="border-color:var(--bg-border);">
+          <h5 class="modal-title text-primary">
+            <i class="bi bi-upload me-2"></i>Subir — {{ label }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
+        </div>
+        <form method="POST" action="{{ url_for('subir_documento', folio=sol.folio) }}"
+              enctype="multipart/form-data">
+          <input type="hidden" name="tipo_documento" value="{{ tipo }}">
+          <div class="modal-body">
+            <label class="form-label required">Selecciona el archivo</label>
+            <input type="file" name="archivo" class="form-control" required
+                   accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip">
+            <div class="form-text mt-2">
+              Formatos: PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB
+            </div>
+          </div>
+          <div class="modal-footer" style="border-color:var(--bg-border);">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Subir</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modales Reemplazar (uno por documento) -->
+  {% for doc in docs %}
+  {% if puede_subir %}
+  <div class="modal fade" id="modalReemplazar_{{ doc.id }}" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background:var(--bg-card);border:1px solid var(--bg-border);">
+        <div class="modal-header" style="border-color:var(--bg-border);">
+          <h5 class="modal-title" style="color:var(--warning);">
+            <i class="bi bi-arrow-repeat me-2"></i>Reemplazar versión
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
+        </div>
+        <form method="POST"
+              action="{{ url_for('reemplazar_documento', folio=sol.folio, doc_id=doc.id) }}"
+              enctype="multipart/form-data">
+          <div class="modal-body">
+            <div class="alert" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--warning);">
+              <i class="bi bi-info-circle me-1"></i>
+              La versión actual <strong>v{{ doc.version }}</strong> de
+              <strong>{{ doc.nombre_original }}</strong> se guardará como histórico.
+            </div>
+            <label class="form-label required">Nueva versión del archivo</label>
+            <input type="file" name="archivo" class="form-control" required
+                   accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip">
+            <div class="form-text mt-2">Formatos: PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB</div>
+          </div>
+          <div class="modal-footer" style="border-color:var(--bg-border);">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-warning text-dark">
+              <i class="bi bi-arrow-repeat me-1"></i>Reemplazar (v{{ doc.version + 1 }})
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% endfor %}
+
+</div><!-- /row archivos -->
+</div><!-- /tab-pane archivos -->
+
+</div><!-- /tab-content -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Abrir pestaña Archivos si el hash es #archivos
+if (window.location.hash === '#archivos') {
+  const tab = document.getElementById('tabArchivosLink');
+  if (tab) { bootstrap.Tab.getOrCreateInstance(tab).show(); }
+}
+// Guardar pestaña activa al hacer click
+document.querySelectorAll('.nav-tab-link').forEach(el => {
+  el.addEventListener('shown.bs.tab', e => {
+    const id = e.target.getAttribute('href');
+    if (id === '#tab-archivos') history.replaceState(null, '', '#archivos');
+    else history.replaceState(null, '', window.location.pathname);
+  });
+});
+</script>
+{% endblock %}

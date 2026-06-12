@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Solicitudes — Seguimiento SD{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Solicitudes</h2>
+    <p class="page-sub">{{ solicitudes|length }} registros encontrados</p>
+  </div>
+  {% if current_user.rol in ('comercial','lider_comercial') %}
+  <a href="{{ url_for('nueva_solicitud') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Nueva
+  </a>
+  {% endif %}
+</div>
+
+<div class="filter-bar">
+  <form method="GET" class="row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <input type="text" name="folio" class="form-control form-control-sm" placeholder="Folio"
+             value="{{ request.args.get('folio','') }}">
+    </div>
+    <div class="col-6 col-md-3">
+      <input type="text" name="cliente" class="form-control form-control-sm" placeholder="Cliente"
+             value="{{ request.args.get('cliente','') }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <select name="estatus" class="form-select form-select-sm">
+        <option value="">Todos los estatus</option>
+        {% for e in estatus_list %}
+        <option value="{{ e }}" {% if request.args.get('estatus') == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if current_user.rol in ('lider_comercial','lider_soluciones') %}
+    <div class="col-6 col-md-2">
+      <input type="text" name="comercial" class="form-control form-control-sm" placeholder="Comercial"
+             value="{{ request.args.get('comercial','') }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <input type="text" name="ingeniero" class="form-control form-control-sm" placeholder="Ingeniero"
+             value="{{ request.args.get('ingeniero','') }}">
+    </div>
+    {% endif %}
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button>
+      <a href="{{ url_for('solicitudes') }}" class="btn btn-sm btn-outline-secondary ms-1"><i class="bi bi-x-lg"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="section-card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Folio</th><th>Cliente</th><th>Tema</th>
+          <th>Comercial</th>
+          <th>Ingeniero</th>
+          <th>Prioridad</th><th>Estatus</th><th>Días</th><th>Monto</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in solicitudes %}
+        {% set dias = s.dias_sin_movimiento() %}
+        <tr class="{% if dias > 15 and s.estatus != 'Cerrada' %}row-danger{% elif dias > 7 and s.estatus != 'Cerrada' %}row-warning{% endif %}">
+          <td><span class="folio-badge">{{ s.folio }}</span></td>
+          <td class="fw-medium">{{ s.cliente }}</td>
+          <td class="text-truncate-cell">{{ s.tema }}</td>
+          <td>{{ s.hunter.nombre if s.hunter else '—' }}</td>
+          <td>{{ s.responsable.nombre if s.responsable else '<span class="text-muted">Sin asignar</span>'|safe }}</td>
+          <td><span class="prioridad-{{ s.prioridad.lower() }}">{{ s.prioridad }}</span></td>
+          <td><span class="badge estatus-{{ s.estatus|replace(' ','_') }}">{{ s.estatus }}</span></td>
+          <td><span class="{% if dias > 15 and s.estatus != 'Cerrada' %}text-danger fw-bold{% elif dias > 7 and s.estatus != 'Cerrada' %}text-warning-dark fw-bold{% endif %}">{{ dias }}d</span></td>
+          <td>{% if s.monto_oportunidad %}${{ "{:,.0f}".format(s.monto_oportunidad) }}{% else %}—{% endif %}</td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="{{ url_for('detalle_solicitud', folio=s.folio) }}" class="btn btn-xs btn-outline-primary">Ver</a>
+              {% if current_user.rol == 'lider_comercial' %}
+              <form method="POST" action="{{ url_for('eliminar_solicitud', folio=s.folio) }}"
+                    onsubmit="return confirm('⚠️ ¿Eliminar permanentemente {{ s.folio }} ({{ s.cliente }})?\n\nEsta acción NO se puede deshacer.')">
+                <button type="submit" class="btn btn-xs btn-outline-danger" title="Eliminar">
+                  <i class="bi bi-trash3"></i>
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10" class="text-center text-muted py-5">
+          <i class="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>No se encontraron solicitudes.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex gap-3 mt-2">
+  <div class="legend-item"><span class="legend-dot danger"></span>+15 días sin movimiento</div>
+  <div class="legend-item"><span class="legend-dot warning"></span>+7 días sin movimiento</div>
+</div>
+{% endblock %}

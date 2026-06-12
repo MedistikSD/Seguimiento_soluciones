@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Nueva Solicitud — Seguimiento SD{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Nueva Solicitud</h2>
+    <p class="page-sub">Completa los datos de la oportunidad comercial</p>
+  </div>
+  <a href="{{ url_for('solicitudes') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-plus me-2"></i>Datos de la Solicitud</h5>
+      </div>
+      <form method="POST" class="p-4">
+        <div class="row g-3">
+          {% if current_user.rol in ('lider_comercial','aux_comercial') %}
+          <div class="col-md-6">
+            <label class="form-label required">Comercial</label>
+            <select name="hunter_id" class="form-select" required>
+              {% for c in comerciales %}
+              <option value="{{ c.id }}" {% if c.id == current_user.id %}selected{% endif %}>{{ c.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
+          <input type="hidden" name="hunter_id" value="{{ current_user.id }}">
+          {% endif %}
+
+          <div class="col-md-6">
+            <label class="form-label required">Fecha en que se solicitó</label>
+            <input type="date" name="fecha_solicitud" class="form-control" required>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label required">Cliente</label>
+            <input type="text" name="cliente" class="form-control" placeholder="Nombre del cliente" required>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label required">Tema / Descripción del análisis</label>
+            <input type="text" name="tema" class="form-control"
+                   placeholder="Ej. Análisis de rutas de distribución regional" required>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Comentarios comerciales</label>
+            <textarea name="comentarios_comerciales" class="form-control" rows="3"
+                      placeholder="Contexto adicional, necesidades del cliente, urgencias…"></textarea>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Monto aproximado de oportunidad (MXN)</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" name="monto_oportunidad" class="form-control"
+                     placeholder="0.00" min="0" step="1000">
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label required">Prioridad</label>
+            <div class="d-flex gap-3 mt-1">
+              {% for p in ['Alta','Media','Baja'] %}
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="prioridad"
+                       id="p{{ p }}" value="{{ p }}" {% if p == 'Media' %}checked{% endif %} required>
+                <label class="form-check-label prioridad-{{ p.lower() }}" for="p{{ p }}">{{ p }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Ingeniero Responsable</label>
+            <select name="responsable_id" class="form-select">
+              <option value="">— Sin asignar —</option>
+              {% for ing in ingenieros %}
+              <option value="{{ ing.id }}">{{ ing.nombre }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Puedes asignarlo después desde el detalle.</div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+        <div class="d-flex justify-content-end gap-2">
+          <a href="{{ url_for('solicitudes') }}" class="btn btn-outline-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-send me-1"></i>Crear Solicitud
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="section-card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-1"></i>¿Cómo funciona?</h6>
+      <div class="timeline-mini">
+        <div class="tm-step"><span class="tm-num">1</span><span>El comercial crea la solicitud con datos del cliente.</span></div>
+        <div class="tm-step"><span class="tm-num">2</span><span>Se genera un folio único automáticamente.</span></div>
+        <div class="tm-step"><span class="tm-num">3</span><span>El ingeniero asignado analiza y documenta.</span></div>
+        <div class="tm-step"><span class="tm-num">4</span><span>Se entrega propuesta al cliente por correo.</span></div>
+        <div class="tm-step"><span class="tm-num">5</span><span>El líder de soluciones cierra la solicitud.</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>document.querySelector('[name=fecha_solicitud]').valueAsDate = new Date();</script>
+{% endblock %}
