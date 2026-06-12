@@ -10,9 +10,14 @@
       · {{ usuarios|length }} usuarios
     </p>
   </div>
-  <a href="{{ url_for('admin_nuevo_usuario') }}" class="btn btn-primary">
-    <i class="bi bi-person-plus me-1"></i>Nuevo Usuario
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('exportar_usuarios') }}" class="btn btn-outline-secondary" title="Exportar CSV">
+      <i class="bi bi-filetype-csv me-1"></i>CSV
+    </a>
+    <a href="{{ url_for('admin_nuevo_usuario') }}" class="btn btn-primary">
+      <i class="bi bi-person-plus me-1"></i>Nuevo Usuario
+    </a>
+  </div>
 </div>
 
 <div class="section-card">

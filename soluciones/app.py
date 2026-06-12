@@ -5,7 +5,11 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from functools import wraps
 from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud
-import os, uuid
+import os, uuid, csv, io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from flask import Response
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'soluciones-logisticas-secret-2026')
@@ -149,12 +153,9 @@ def recuperar_password():
 def dashboard():
     q = Solicitud.query
 
+    # administrador y lider_soluciones ven TODAS las solicitudes sin restricción
     if current_user.rol in ('lider_comercial', 'aux_comercial'):
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
-        ids.append(current_user.id)
-        q = q.filter(Solicitud.hunter_id.in_(ids))
-    elif current_user.rol == 'lider_comercial':
-        ids = [u.id for u in User.query.filter_by(rol='comercial').all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
 
@@ -223,6 +224,7 @@ def dashboard():
 @login_required
 def solicitudes():
     q = Solicitud.query
+    # administrador y lider_soluciones ven TODAS sin restricción
     if current_user.rol in ('lider_comercial','aux_comercial'):
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
@@ -327,7 +329,8 @@ def nueva_solicitud():
 @login_required
 def detalle_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    if current_user.rol == 'lider_comercial':
+    # administrador y lider_soluciones acceden a cualquier solicitud
+    if current_user.rol in ('lider_comercial', 'aux_comercial'):
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         if sol.hunter_id not in ids:
@@ -756,6 +759,172 @@ def descargar_documento(folio, doc_id):
                                as_attachment=True, download_name=doc.nombre_original)
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── EXPORTACIONES ────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/exportar/solicitudes')
+@login_required
+@rol_requerido('administrador','lider_comercial','lider_soluciones','aux_comercial')
+def exportar_solicitudes():
+    q = Solicitud.query
+
+    # Aplicar mismos filtros de rol que en la vista
+    if current_user.rol in ('lider_comercial','aux_comercial'):
+        ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
+        ids.append(current_user.id)
+        q = q.filter(Solicitud.hunter_id.in_(ids))
+
+    # Filtros opcionales por querystring
+    f_estatus   = request.args.get('f_estatus','').strip()
+    f_comercial = request.args.get('f_comercial','').strip()
+    f_tema      = request.args.get('f_tema','').strip()
+    if f_estatus:   q = q.filter(Solicitud.estatus == f_estatus)
+    if f_comercial: q = q.join(User, Solicitud.hunter_id == User.id).filter(User.id == int(f_comercial))
+    if f_tema:      q = q.filter(Solicitud.tema == f_tema)
+
+    solicitudes = q.order_by(Solicitud.fecha_captura.desc()).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Solicitudes"
+
+    # Estilos
+    header_fill = PatternFill("solid", fgColor="0F172A")
+    header_font = Font(bold=True, color="4BB8C8", size=11)
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    border_side = Side(style="thin", color="2A3040")
+    cell_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+    alt_fill = PatternFill("solid", fgColor="161B22")
+
+    headers = [
+        "Folio", "Fecha Captura", "Fecha Solicitud", "Cliente", "Tipo",
+        "Comercial", "Ingeniero", "Prioridad", "Estatus",
+        "Monto Oportunidad", "Días Captura", "Días Sin Mov.",
+        "Fecha Compromiso", "Fecha Envío Cliente", "Fecha Cierre",
+        "Hist. Surtido", "Inventario", "Maestro Prod.", "Hist. Recepción", "Cuestionario Log."
+    ]
+    col_widths = [16,16,16,28,22,22,22,10,24,18,12,12,16,18,14,14,12,14,15,16]
+
+    ws.row_dimensions[1].height = 30
+    for col_num, (header, width) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=col_num, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = cell_border
+        ws.column_dimensions[get_column_letter(col_num)].width = width
+
+    for row_num, s in enumerate(solicitudes, 2):
+        fill = alt_fill if row_num % 2 == 0 else PatternFill("solid", fgColor="1A1F27")
+        font = Font(color="E2E8F0", size=10)
+        row_data = [
+            s.folio,
+            s.fecha_captura.strftime('%d/%m/%Y %H:%M') if s.fecha_captura else '',
+            s.fecha_solicitud.strftime('%d/%m/%Y') if s.fecha_solicitud else '',
+            s.cliente,
+            s.tema,
+            s.hunter.nombre if s.hunter else '',
+            s.responsable.nombre if s.responsable else 'Sin asignar',
+            s.prioridad,
+            s.estatus,
+            s.monto_oportunidad or 0,
+            s.dias_desde_captura(),
+            s.dias_sin_movimiento(),
+            s.fecha_compromiso.strftime('%d/%m/%Y') if s.fecha_compromiso else '',
+            s.fecha_envio_cliente.strftime('%d/%m/%Y') if s.fecha_envio_cliente else '',
+            s.fecha_cierre.strftime('%d/%m/%Y') if s.fecha_cierre else '',
+            'Sí' if s.historial_surtido else 'No',
+            'Sí' if s.inventario else 'No',
+            'Sí' if s.maestro_productos else 'No',
+            'Sí' if s.historial_recepcion else 'No',
+            'Sí' if s.cuestionario_logistico else 'No',
+        ]
+        for col_num, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_num, column=col_num, value=value)
+            cell.font = font
+            cell.fill = fill
+            cell.border = cell_border
+            cell.alignment = Alignment(vertical="center")
+            # Formato moneda para monto
+            if col_num == 10:
+                cell.number_format = '"$"#,##0'
+                cell.font = Font(color="AECA00", bold=True, size=10)
+            # Color estatus
+            if col_num == 9:
+                colores_estatus = {
+                    'Capturada': 'E2E8F0', 'Asignada': '4BB8C8',
+                    'En Análisis': 'F59E0B', 'Información Completa': 'AECA00',
+                    'Propuesta Enviada': '7FAD00', 'Cerrada': '6B7280',
+                    'Pendiente Información Cliente': 'EF4444'
+                }
+                color = colores_estatus.get(value, 'E2E8F0')
+                cell.font = Font(color=color, bold=True, size=10)
+
+    # Freeze header row
+    ws.freeze_panes = "A2"
+
+    # Auto-filter
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}1"
+
+    # Summary row
+    total_row = len(solicitudes) + 3
+    ws.cell(row=total_row, column=1, value="TOTAL SOLICITUDES").font = Font(bold=True, color="4BB8C8", size=11)
+    ws.cell(row=total_row, column=2, value=len(solicitudes)).font = Font(bold=True, color="E2E8F0", size=11)
+    ws.cell(row=total_row, column=9, value="MONTO TOTAL").font = Font(bold=True, color="4BB8C8", size=11)
+    total_monto = sum(s.monto_oportunidad or 0 for s in solicitudes)
+    monto_cell = ws.cell(row=total_row, column=10, value=total_monto)
+    monto_cell.font = Font(bold=True, color="AECA00", size=11)
+    monto_cell.number_format = '"$"#,##0'
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fecha_str = datetime.utcnow().strftime('%Y%m%d_%H%M')
+    filename = f"SeguimientoSD_Solicitudes_{fecha_str}.xlsx"
+    return Response(
+        buf.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.route('/exportar/usuarios')
+@login_required
+@rol_requerido('administrador','lider_comercial','lider_soluciones','aux_comercial')
+def exportar_usuarios():
+    if es_admin():
+        usuarios = User.query.order_by(User.rol, User.nombre).all()
+    elif current_user.rol in ('lider_comercial','aux_comercial'):
+        usuarios = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial']))                             .order_by(User.nombre).all()
+    else:
+        usuarios = User.query.filter(User.rol.in_(['ingeniero','lider_soluciones']))                             .order_by(User.nombre).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Nombre', 'Usuario', 'Rol', 'Estatus', 'Fecha Creación',
+                     'Solicitudes Creadas', 'Solicitudes Asignadas'])
+    for u in usuarios:
+        writer.writerow([
+            u.nombre,
+            u.username,
+            ROLES_LABEL.get(u.rol, u.rol),
+            'Activo' if u.activo else 'Inactivo',
+            u.created_at.strftime('%d/%m/%Y') if u.created_at else '',
+            u.solicitudes_creadas.count(),
+            u.solicitudes_asignadas.count(),
+        ])
+
+    fecha_str = datetime.utcnow().strftime('%Y%m%d_%H%M')
+    filename = f"SeguimientoSD_Usuarios_{fecha_str}.csv"
+    return Response(
+        '﻿' + output.getvalue(),   # BOM para que Excel lo abra bien
+        mimetype='text/csv; charset=utf-8',
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 # ── Init DB ───────────────────────────────────────────────────────────────────
 def init_db():
     db.create_all()
@@ -781,6 +950,8 @@ def init_db():
             User(username='Ida_Acosta',          password_hash=generate_password_hash('Hunter1234'),     nombre='Ida Acosta',          rol='comercial'),
             User(username='Malena_Baltazar',     password_hash=generate_password_hash('Hunter1235'),     nombre='Malena Baltazar',     rol='comercial'),
             User(username='José_Ortega',         password_hash=generate_password_hash('Hunter1236'),     nombre='José Ortega',         rol='comercial'),
+            User(username='aline_esquivel',      password_hash=generate_password_hash('AuxCom2026!'),    nombre='Aline Esquivel',      rol='aux_comercial'),
+            User(username='rubi_arizmendi',      password_hash=generate_password_hash('AuxCom2026!'),    nombre='Rubí Arizmendi',      rol='aux_comercial'),
         ]
         for u in users:
             db.session.add(u)

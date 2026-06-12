@@ -2,10 +2,10 @@
 {% block title %}{{ sol.folio }} — Seguimiento SD{% endblock %}
 
 {% block content %}
-{% set puede_editar_sol = current_user.rol in ('ingeniero','lider_soluciones') and (current_user.rol == 'lider_soluciones' or sol.responsable_id == current_user.id) %}
-{% set puede_lider_sol  = current_user.rol == 'lider_soluciones' %}
-{% set puede_doc_com    = current_user.rol in ('comercial','lider_comercial','lider_soluciones','aux_comercial') %}
-{% set puede_doc_sol    = current_user.rol in ('ingeniero','lider_comercial','lider_soluciones','aux_comercial') %}
+{% set puede_editar_sol = current_user.rol == 'administrador' or (current_user.rol in ('ingeniero','lider_soluciones') and (current_user.rol == 'lider_soluciones' or sol.responsable_id == current_user.id)) %}
+{% set puede_lider_sol  = current_user.rol in ('lider_soluciones','administrador') %}
+{% set puede_doc_com    = current_user.rol in ('comercial','lider_comercial','lider_soluciones','aux_comercial','administrador') %}
+{% set puede_doc_sol    = current_user.rol in ('ingeniero','lider_comercial','lider_soluciones','aux_comercial','administrador') %}
 
 {% set docs_com  = sol.documentos.filter_by(tipo_documento='comercial',  activo=True).all() %}
 {% set docs_sol  = sol.documentos.filter_by(tipo_documento='soluciones', activo=True).all() %}
@@ -282,7 +282,7 @@
       </div>
     </div>
 
-    {% if current_user.rol == 'lider_comercial' %}
+    {% if current_user.rol in ('lider_comercial','administrador') %}
     <div class="section-card mt-4 border-danger-subtle">
       <div class="section-card-header" style="background:rgba(239,68,68,.08);">
         <h5 class="mb-0 text-danger"><i class="bi bi-trash me-2"></i>Zona de peligro</h5>

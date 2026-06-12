@@ -68,16 +68,26 @@
                 <span class="text-muted fw-normal">(dejar vacío para no cambiar)</span>
               {% endif %}
             </label>
-            <input type="password" name="password" class="form-control"
-                   placeholder="Mínimo 6 caracteres"
-                   {{ 'required' if accion == 'nuevo' }}>
+            <div class="input-group">
+              <input type="password" name="password" id="inputPwd" class="form-control"
+                     placeholder="Mínimo 6 caracteres"
+                     {{ 'required' if accion == 'nuevo' }}>
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('inputPwd','iconPwd')" tabindex="-1">
+                <i class="bi bi-eye" id="iconPwd"></i>
+              </button>
+            </div>
           </div>
 
           <div class="col-12">
             <label class="form-label {{ 'required' if accion == 'nuevo' }}">Confirmar contraseña</label>
-            <input type="password" name="confirm" class="form-control"
-                   placeholder="Repite la contraseña"
-                   {{ 'required' if accion == 'nuevo' }}>
+            <div class="input-group">
+              <input type="password" name="confirm" id="inputConfirm" class="form-control"
+                     placeholder="Repite la contraseña"
+                     {{ 'required' if accion == 'nuevo' }}>
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('inputConfirm','iconConfirm')" tabindex="-1">
+                <i class="bi bi-eye" id="iconConfirm"></i>
+              </button>
+            </div>
           </div>
 
           {% if accion == 'editar' %}
