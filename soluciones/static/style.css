@@ -648,3 +648,29 @@ hr { border-color: var(--bg-border); opacity: 1; }
 
 /* ── ROL AUX COMERCIAL ────────────────────────── */
 .rol-badge-aux_comercial { background: rgba(75,184,200,.1); color: var(--turquesa-dark); }
+
+/* ── RECUPERAR CONTRASEÑA ─────────────────────── */
+.recover-link {
+  color: var(--text-tertiary); font-size: 13px; text-decoration: none;
+  transition: color var(--transition);
+}
+.recover-link:hover { color: var(--turquesa); }
+
+/* ── TEMA CHIP ────────────────────────────────── */
+.tema-chip {
+  background: rgba(174,202,0,.1); color: var(--verde);
+  border: 1px solid rgba(174,202,0,.25);
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+}
+
+/* ── FILTER CHIP ──────────────────────────────── */
+.filter-chip {
+  background: rgba(75,184,200,.15); color: var(--turquesa);
+  border: 1px solid rgba(75,184,200,.3);
+  padding: 1px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; margin-left: 4px;
+}
+
+/* ── ROL ADMIN ────────────────────────────────── */
+.rol-badge-administrador { background: rgba(239,68,68,.15); color: #EF4444; }

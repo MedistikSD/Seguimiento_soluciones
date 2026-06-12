@@ -18,9 +18,10 @@
       <div class="section-card-header">
         <h5 class="mb-0"><i class="bi bi-file-earmark-plus me-2"></i>Datos de la Solicitud</h5>
       </div>
-      <form method="POST" class="p-4">
+      <form method="POST" enctype="multipart/form-data" class="p-4">
         <div class="row g-3">
-          {% if current_user.rol in ('lider_comercial','aux_comercial') %}
+
+          {% if current_user.rol in ('lider_comercial','aux_comercial','administrador') %}
           <div class="col-md-6">
             <label class="form-label required">Comercial</label>
             <select name="hunter_id" class="form-select" required>
@@ -34,8 +35,9 @@
           {% endif %}
 
           <div class="col-md-6">
-            <label class="form-label required">Fecha en que se solicitó</label>
-            <input type="date" name="fecha_solicitud" class="form-control" required>
+            <label class="form-label required">Fecha de solicitud</label>
+            <input type="date" name="fecha_solicitud" id="fechaSolicitud" class="form-control" required>
+            <div class="form-text">No puede ser anterior a hoy.</div>
           </div>
 
           <div class="col-12">
@@ -44,9 +46,13 @@
           </div>
 
           <div class="col-12">
-            <label class="form-label required">Tema / Descripción del análisis</label>
-            <input type="text" name="tema" class="form-control"
-                   placeholder="Ej. Análisis de rutas de distribución regional" required>
+            <label class="form-label required">Tipo de solicitud</label>
+            <select name="tema" class="form-select" required>
+              <option value="">— Selecciona una opción —</option>
+              {% for t in temas %}
+              <option value="{{ t.nombre }}">{{ t.nombre }}</option>
+              {% endfor %}
+            </select>
           </div>
 
           <div class="col-12">
@@ -60,7 +66,7 @@
             <div class="input-group">
               <span class="input-group-text">$</span>
               <input type="number" name="monto_oportunidad" class="form-control"
-                     placeholder="0.00" min="0" step="1000">
+                     placeholder="0" min="0" step="1000">
             </div>
           </div>
 
@@ -77,6 +83,8 @@
             </div>
           </div>
 
+          <!-- Ingeniero: solo admin y lider_soluciones -->
+          {% if current_user.rol in ('administrador','lider_soluciones') %}
           <div class="col-12">
             <label class="form-label">Ingeniero Responsable</label>
             <select name="responsable_id" class="form-select">
@@ -85,8 +93,21 @@
               <option value="{{ ing.id }}">{{ ing.nombre }}</option>
               {% endfor %}
             </select>
-            <div class="form-text">Puedes asignarlo después desde el detalle.</div>
+            <div class="form-text">Solo el Administrador y el Líder de Soluciones pueden asignar ingenieros.</div>
           </div>
+          {% endif %}
+
+          <!-- Archivos adjuntos iniciales -->
+          <div class="col-12">
+            <label class="form-label">
+              <i class="bi bi-paperclip me-1"></i>Archivos adjuntos
+              <span class="text-muted fw-normal">(opcional)</span>
+            </label>
+            <input type="file" name="archivos_iniciales" class="form-control"
+                   multiple accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip">
+            <div class="form-text">PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB por archivo · Puedes seleccionar varios</div>
+          </div>
+
         </div>
 
         <hr class="my-4">
@@ -106,9 +127,10 @@
       <div class="timeline-mini">
         <div class="tm-step"><span class="tm-num">1</span><span>El comercial crea la solicitud con datos del cliente.</span></div>
         <div class="tm-step"><span class="tm-num">2</span><span>Se genera un folio único automáticamente.</span></div>
-        <div class="tm-step"><span class="tm-num">3</span><span>El ingeniero asignado analiza y documenta.</span></div>
-        <div class="tm-step"><span class="tm-num">4</span><span>Se entrega propuesta al cliente por correo.</span></div>
-        <div class="tm-step"><span class="tm-num">5</span><span>El líder de soluciones cierra la solicitud.</span></div>
+        <div class="tm-step"><span class="tm-num">3</span><span>El Líder de Soluciones o Admin asigna al ingeniero.</span></div>
+        <div class="tm-step"><span class="tm-num">4</span><span>El ingeniero analiza y documenta.</span></div>
+        <div class="tm-step"><span class="tm-num">5</span><span>Se entrega propuesta al cliente por correo.</span></div>
+        <div class="tm-step"><span class="tm-num">6</span><span>El líder cierra la solicitud.</span></div>
       </div>
     </div>
   </div>
@@ -116,5 +138,11 @@
 {% endblock %}
 
 {% block scripts %}
-<script>document.querySelector('[name=fecha_solicitud]').valueAsDate = new Date();</script>
+<script>
+// Fecha mínima = hoy
+const hoy = new Date().toISOString().split('T')[0];
+const inputFecha = document.getElementById('fechaSolicitud');
+inputFecha.min = hoy;
+inputFecha.value = hoy;
+</script>
 {% endblock %}

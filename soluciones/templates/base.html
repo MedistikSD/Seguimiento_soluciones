@@ -22,16 +22,21 @@
       <a href="{{ url_for('solicitudes') }}" class="nav-item {% if request.endpoint in ('solicitudes','detalle_solicitud') %}active{% endif %}">
         <i class="bi bi-file-text"></i><span>Solicitudes</span>
       </a>
-      {% if current_user.rol in ('comercial','lider_comercial','aux_comercial') %}
+      {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
       <a href="{{ url_for('nueva_solicitud') }}" class="nav-item {% if request.endpoint == 'nueva_solicitud' %}active{% endif %}">
         <i class="bi bi-plus-circle"></i><span>Nueva Solicitud</span>
       </a>
       {% endif %}
-      {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial') %}
+      {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') %}
       <div class="nav-section-label">Administración</div>
-      <a href="{{ url_for('admin_usuarios') }}" class="nav-item {% if 'admin' in request.endpoint %}active{% endif %}">
+      <a href="{{ url_for('admin_usuarios') }}" class="nav-item {% if request.endpoint in ('admin_usuarios','admin_nuevo_usuario','admin_editar_usuario') %}active{% endif %}">
         <i class="bi bi-people"></i><span>Usuarios</span>
       </a>
+      {% if current_user.rol == 'administrador' %}
+      <a href="{{ url_for('admin_temas') }}" class="nav-item {% if request.endpoint == 'admin_temas' %}active{% endif %}">
+        <i class="bi bi-tags"></i><span>Temas</span>
+      </a>
+      {% endif %}
       {% endif %}
     </nav>
 
@@ -45,6 +50,7 @@
             {% elif current_user.rol == 'ingeniero' %}Ingeniero
             {% elif current_user.rol == 'lider_comercial' %}Líder Comercial
             {% elif current_user.rol == 'aux_comercial' %}Aux Comercial
+            {% elif current_user.rol == 'administrador' %}Administrador
             {% else %}Líder de Soluciones{% endif %}
           </div>
         </div>

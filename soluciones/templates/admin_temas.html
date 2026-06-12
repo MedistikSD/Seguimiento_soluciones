@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Temas — Seguimiento SD{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Gestión de Temas</h2>
+    <p class="page-sub">Catálogo de tipos de solicitud · {{ temas|length }} temas</p>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Agregar nuevo tema</h5>
+      </div>
+      <form method="POST" action="{{ url_for('admin_nuevo_tema') }}" class="p-4">
+        <div class="mb-3">
+          <label class="form-label required">Nombre del tema</label>
+          <input type="text" name="nombre" class="form-control"
+                 placeholder="Ej. Cross-docking" required autofocus>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-plus-lg me-1"></i>Agregar tema
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-tags me-2"></i>Temas configurados</h5>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr><th>#</th><th>Nombre</th><th>Estatus</th><th>Acciones</th></tr>
+          </thead>
+          <tbody>
+            {% for t in temas %}
+            <tr class="{% if not t.activo %}opacity-50{% endif %}">
+              <td><code>{{ t.id }}</code></td>
+              <td class="fw-medium">{{ t.nombre }}</td>
+              <td>
+                {% if t.activo %}
+                  <span class="badge bg-success">Activo</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactivo</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-2">
+                  <form method="POST" action="{{ url_for('admin_toggle_tema', tid=t.id) }}">
+                    <button type="submit" class="btn btn-xs {{ 'btn-outline-warning' if t.activo else 'btn-outline-success' }}">
+                      <i class="bi bi-{{ 'slash-circle' if t.activo else 'check-circle' }}"></i>
+                      {{ 'Desactivar' if t.activo else 'Activar' }}
+                    </button>
+                  </form>
+                  <form method="POST" action="{{ url_for('admin_eliminar_tema', tid=t.id) }}"
+                        onsubmit="return confirm('¿Eliminar el tema {{ t.nombre }}?')">
+                    <button type="submit" class="btn btn-xs btn-outline-danger">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-4">Sin temas configurados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

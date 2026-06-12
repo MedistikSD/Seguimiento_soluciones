@@ -18,9 +18,8 @@
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for cat, msg in messages %}
-          <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
-            {{ msg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          <div class="alert alert-{{ cat }} alert-dismissible fade show">
+            {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
           </div>
         {% endfor %}
       {% endwith %}
@@ -31,15 +30,19 @@
           <div class="input-group">
             <span class="input-group-text"><i class="bi bi-person"></i></span>
             <input type="text" name="username" class="form-control form-control-lg"
-                   placeholder="Ingresa tu usuario" required autofocus>
+                   placeholder="Ingresa tu usuario" required autofocus autocomplete="username">
           </div>
         </div>
         <div class="mb-4">
           <label class="form-label fw-semibold">Contraseña</label>
           <div class="input-group">
             <span class="input-group-text"><i class="bi bi-lock"></i></span>
-            <input type="password" name="password" class="form-control form-control-lg"
-                   placeholder="••••••••" required>
+            <input type="password" name="password" id="loginPassword"
+                   class="form-control form-control-lg" placeholder="••••••••"
+                   required autocomplete="current-password">
+            <button type="button" class="btn btn-outline-secondary" id="toggleLoginPwd" tabindex="-1">
+              <i class="bi bi-eye" id="iconLoginPwd"></i>
+            </button>
           </div>
         </div>
         <button type="submit" class="btn btn-primary btn-lg w-100">
@@ -47,13 +50,24 @@
         </button>
       </form>
 
-      <div class="login-hint mt-4">
-        <small class="text-muted">
-          <strong>Demo:</strong> lider / lider123 &nbsp;·&nbsp; gerardo / hunter123 &nbsp;·&nbsp; juan / sol123
-        </small>
+      <div class="text-center mt-3">
+        <a href="{{ url_for('recuperar_password') }}" class="recover-link">
+          <i class="bi bi-key me-1"></i>¿Olvidaste tu contraseña?
+        </a>
       </div>
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.getElementById('toggleLoginPwd').addEventListener('click', function() {
+      const input = document.getElementById('loginPassword');
+      const icon  = document.getElementById('iconLoginPwd');
+      if (input.type === 'password') {
+        input.type = 'text'; icon.className = 'bi bi-eye-slash';
+      } else {
+        input.type = 'password'; icon.className = 'bi bi-eye';
+      }
+    });
+  </script>
 </body>
 </html>

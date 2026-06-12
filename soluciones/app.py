@@ -4,14 +4,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from functools import wraps
-from models import db, User, Solicitud, Comentario, Bitacora, Documento
+from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud
 import os, uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'soluciones-logisticas-secret-2026')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 UPLOAD_BASE = os.path.join(os.path.dirname(__file__), 'uploads')
 ALLOWED_EXTENSIONS = {'pdf','xlsx','xls','pptx','docx','png','jpg','jpeg','zip'}
 
@@ -25,13 +25,8 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Inicia sesión para continuar.'
 login_manager.login_message_category = 'warning'
 
-# Roles:
-#   lider_comercial  → gestiona usuarios comerciales, crea solicitudes, ve métricas
-#   lider_soluciones → gestiona usuarios ingenieros, ve todas las solicitudes, cierra
-#   comercial        → antes "hunter"
-#   ingeniero        → antes "soluciones" / "analista"
-
 ROLES_LABEL = {
+    'administrador':    'Administrador',
     'lider_comercial':  'Líder Comercial',
     'lider_soluciones': 'Líder de Soluciones',
     'aux_comercial':    'Aux Comercial',
@@ -39,12 +34,14 @@ ROLES_LABEL = {
     'ingeniero':        'Ingeniero',
 }
 
+TEMAS_DEFAULT = ['Reingeniería','Transporte','Almacenaje','VAS','Transporte y almacenaje']
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# ── Decoradores de rol ──────────────────────────────────────────────────────
+# ── Decoradores ──────────────────────────────────────────────────────────────
 def rol_requerido(*roles):
     def decorator(f):
         @wraps(f)
@@ -57,34 +54,21 @@ def rol_requerido(*roles):
     return decorator
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
-def generar_folio():
-    anio = datetime.utcnow().year
-    ultima = (Solicitud.query
-              .filter(Solicitud.folio.like(f'SOL-{anio}-%'))
-              .order_by(Solicitud.id.desc())
-              .first())
-    num = int(ultima.folio.split('-')[-1]) + 1 if ultima else 1
-    return f'SOL-{anio}-{num:04d}'
-
-
-def registrar_bitacora(solicitud_id, accion, usuario_id=None):
-    b = Bitacora(
-        solicitud_id=solicitud_id,
-        usuario_id=usuario_id or (current_user.id if current_user.is_authenticated else None),
-        accion=accion
-    )
-    db.session.add(b)
-
+# ── Helpers ──────────────────────────────────────────────────────────────────
+def es_admin():
+    return current_user.rol == 'administrador'
 
 def es_lider():
-    return current_user.rol in ('lider_comercial', 'lider_soluciones', 'aux_comercial')
+    return current_user.rol in ('administrador','lider_comercial','lider_soluciones','aux_comercial')
 
 def es_comercial():
-    return current_user.rol in ('comercial', 'lider_comercial', 'aux_comercial')
+    return current_user.rol in ('administrador','comercial','lider_comercial','aux_comercial')
 
 def es_soluciones():
-    return current_user.rol in ('ingeniero', 'lider_soluciones')
+    return current_user.rol in ('administrador','ingeniero','lider_soluciones')
+
+def puede_asignar_ingeniero():
+    return current_user.rol in ('administrador','lider_soluciones')
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -93,6 +77,24 @@ def get_upload_path(folio, tipo):
     path = os.path.join(UPLOAD_BASE, folio, tipo)
     os.makedirs(path, exist_ok=True)
     return path
+
+def generar_folio():
+    anio = datetime.utcnow().year
+    ultima = (Solicitud.query
+              .filter(Solicitud.folio.like(f'SOL-{anio}-%'))
+              .order_by(Solicitud.id.desc()).first())
+    num = int(ultima.folio.split('-')[-1]) + 1 if ultima else 1
+    return f'SOL-{anio}-{num:04d}'
+
+def registrar_bitacora(solicitud_id, accion, usuario_id=None):
+    db.session.add(Bitacora(
+        solicitud_id=solicitud_id,
+        usuario_id=usuario_id or (current_user.id if current_user.is_authenticated else None),
+        accion=accion
+    ))
+
+def get_temas():
+    return TemasSolicitud.query.filter_by(activo=True).order_by(TemasSolicitud.orden, TemasSolicitud.nombre).all()
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -119,50 +121,95 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ── Recuperar contraseña ─────────────────────────────────────────────────────
+@app.route('/recuperar', methods=['GET', 'POST'])
+def recuperar_password():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        nueva    = request.form.get('nueva_password', '')
+        confirm  = request.form.get('confirm_password', '')
+        user = User.query.filter_by(username=username, activo=True).first()
+        if not user:
+            flash('Usuario no encontrado.', 'danger')
+        elif len(nueva) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
+        elif nueva != confirm:
+            flash('Las contraseñas no coinciden.', 'danger')
+        else:
+            user.password_hash = generate_password_hash(nueva)
+            db.session.commit()
+            flash('Contraseña actualizada. Ya puedes iniciar sesión.', 'success')
+            return redirect(url_for('login'))
+    return render_template('recuperar_password.html')
+
+
 # ── Dashboard ────────────────────────────────────────────────────────────────
 @app.route('/dashboard')
 @login_required
 def dashboard():
     q = Solicitud.query
 
-    if current_user.rol == 'lider_comercial':
-        # Ve solo las solicitudes de sus comerciales
+    if current_user.rol in ('lider_comercial', 'aux_comercial'):
+        ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
+        ids.append(current_user.id)
+        q = q.filter(Solicitud.hunter_id.in_(ids))
+    elif current_user.rol == 'lider_comercial':
         ids = [u.id for u in User.query.filter_by(rol='comercial').all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
 
+    # Filtros dashboard
+    f_estatus  = request.args.get('f_estatus', '').strip()
+    f_comercial= request.args.get('f_comercial', '').strip()
+    f_tema     = request.args.get('f_tema', '').strip()
+
+    if f_estatus:   q = q.filter(Solicitud.estatus == f_estatus)
+    if f_comercial: q = q.join(User, Solicitud.hunter_id == User.id).filter(User.id == int(f_comercial))
+    if f_tema:      q = q.filter(Solicitud.tema == f_tema)
+
     todas = q.all()
-    abiertas  = [s for s in todas if s.estatus not in ('Cerrada', 'Propuesta Enviada')]
+    abiertas  = [s for s in todas if s.estatus not in ('Cerrada','Propuesta Enviada')]
     cerradas  = [s for s in todas if s.estatus == 'Cerrada']
     vencidas  = [s for s in todas if s.dias_sin_movimiento() > 15 and s.estatus != 'Cerrada']
     monto_total = sum(s.monto_oportunidad or 0 for s in todas)
 
     tiempos = [s.dias_desde_captura() for s in cerradas]
-    promedio_atencion = round(sum(tiempos) / len(tiempos), 1) if tiempos else 0
+    promedio_atencion = round(sum(tiempos)/len(tiempos), 1) if tiempos else 0
 
-    por_comercial = {}
-    por_ingeniero = {}
+    # Monto por comercial y por ingeniero para gráficas
+    por_comercial_monto = {}
+    por_ingeniero_monto = {}
     if es_lider():
         for u in User.query.filter_by(rol='comercial').all():
-            cnt = Solicitud.query.filter_by(hunter_id=u.id).filter(Solicitud.estatus != 'Cerrada').count()
-            if cnt: por_comercial[u.nombre] = cnt
+            monto = db.session.query(db.func.sum(Solicitud.monto_oportunidad))\
+                .filter(Solicitud.hunter_id == u.id, Solicitud.estatus != 'Cerrada').scalar() or 0
+            if monto: por_comercial_monto[u.nombre] = round(monto)
         for u in User.query.filter_by(rol='ingeniero').all():
-            cnt = Solicitud.query.filter_by(responsable_id=u.id).filter(Solicitud.estatus != 'Cerrada').count()
-            if cnt: por_ingeniero[u.nombre] = cnt
+            monto = db.session.query(db.func.sum(Solicitud.monto_oportunidad))\
+                .filter(Solicitud.responsable_id == u.id, Solicitud.estatus != 'Cerrada').scalar() or 0
+            if monto: por_ingeniero_monto[u.nombre] = round(monto)
 
     estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
                     'Información Completa','Propuesta Enviada','Cerrada']
-    por_estatus = {e: len([s for s in todas if s.estatus == e]) for e in estatus_list if len([s for s in todas if s.estatus == e])}
+    por_estatus = {e: len([s for s in todas if s.estatus == e])
+                   for e in estatus_list if any(s.estatus == e for s in todas)}
 
     ultimas = sorted(todas, key=lambda s: s.ultima_actualizacion or s.fecha_captura, reverse=True)[:5]
+    comerciales_list = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial'])).all()
+    temas_list = get_temas()
 
     return render_template('dashboard.html',
-                           total=len(todas), abiertas=len(abiertas),
-                           cerradas=len(cerradas), vencidas=len(vencidas),
-                           monto_total=monto_total, promedio_atencion=promedio_atencion,
-                           por_comercial=por_comercial, por_ingeniero=por_ingeniero,
-                           por_estatus=por_estatus, ultimas=ultimas,
-                           ROLES_LABEL=ROLES_LABEL)
+        total=len(todas), abiertas=len(abiertas), cerradas=len(cerradas),
+        vencidas=len(vencidas), monto_total=monto_total,
+        promedio_atencion=promedio_atencion,
+        por_comercial_monto=por_comercial_monto,
+        por_ingeniero_monto=por_ingeniero_monto,
+        por_estatus=por_estatus, ultimas=ultimas,
+        ROLES_LABEL=ROLES_LABEL,
+        estatus_list=estatus_list,
+        comerciales_list=comerciales_list,
+        temas_list=temas_list,
+        f_estatus=f_estatus, f_comercial=f_comercial, f_tema=f_tema)
 
 
 # ── Solicitudes ──────────────────────────────────────────────────────────────
@@ -170,21 +217,22 @@ def dashboard():
 @login_required
 def solicitudes():
     q = Solicitud.query
-
-    if current_user.rol == 'lider_comercial':
-        ids = [u.id for u in User.query.filter_by(rol='comercial').all()]
+    if current_user.rol in ('lider_comercial','aux_comercial'):
+        ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
 
-    folio        = request.args.get('folio', '').strip()
-    cliente      = request.args.get('cliente', '').strip()
-    estatus      = request.args.get('estatus', '').strip()
-    comercial_f  = request.args.get('comercial', '').strip()
-    ingeniero_f  = request.args.get('ingeniero', '').strip()
+    folio       = request.args.get('folio','').strip()
+    cliente     = request.args.get('cliente','').strip()
+    estatus     = request.args.get('estatus','').strip()
+    comercial_f = request.args.get('comercial','').strip()
+    ingeniero_f = request.args.get('ingeniero','').strip()
+    tema_f      = request.args.get('tema','').strip()
 
     if folio:       q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
     if cliente:     q = q.filter(Solicitud.cliente.ilike(f'%{cliente}%'))
     if estatus:     q = q.filter(Solicitud.estatus == estatus)
+    if tema_f:      q = q.filter(Solicitud.tema == tema_f)
     if comercial_f:
         q = q.join(User, Solicitud.hunter_id == User.id).filter(User.nombre.ilike(f'%{comercial_f}%'))
     if ingeniero_f:
@@ -192,21 +240,21 @@ def solicitudes():
         q = q.join(ra, Solicitud.responsable_id == ra.id).filter(ra.nombre.ilike(f'%{ingeniero_f}%'))
 
     lista      = q.order_by(Solicitud.fecha_captura.desc()).all()
-    comerciales = User.query.filter_by(rol='comercial', activo=True).all()
-    ingenieros  = User.query.filter_by(rol='ingeniero', activo=True).all()
+    ingenieros = User.query.filter_by(rol='ingeniero', activo=True).all()
     estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
                     'Información Completa','Propuesta Enviada','Cerrada']
     return render_template('solicitudes.html', solicitudes=lista,
-                           comerciales=comerciales, ingenieros=ingenieros,
-                           estatus_list=estatus_list)
+                           ingenieros=ingenieros, estatus_list=estatus_list,
+                           temas_list=get_temas())
 
 
 @app.route('/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
-@rol_requerido('comercial', 'lider_comercial', 'aux_comercial')
+@rol_requerido('comercial','lider_comercial','aux_comercial','administrador')
 def nueva_solicitud():
     ingenieros  = User.query.filter_by(rol='ingeniero', activo=True).all()
     comerciales = User.query.filter(User.rol.in_(['comercial','aux_comercial']), User.activo==True).all()
+    temas       = get_temas()
 
     if request.method == 'POST':
         f = request.form
@@ -214,9 +262,20 @@ def nueva_solicitud():
             fecha_sol = datetime.strptime(f['fecha_solicitud'], '%Y-%m-%d').date()
         except (ValueError, KeyError):
             flash('Fecha de solicitud inválida.', 'danger')
-            return render_template('nueva_solicitud.html', ingenieros=ingenieros, comerciales=comerciales)
+            return render_template('nueva_solicitud.html', ingenieros=ingenieros,
+                                   comerciales=comerciales, temas=temas)
 
-        responsable_id = int(f['responsable_id']) if f.get('responsable_id') else None
+        # Fecha no puede ser anterior a hoy
+        if fecha_sol < date.today():
+            flash('La fecha de solicitud no puede ser anterior a hoy.', 'danger')
+            return render_template('nueva_solicitud.html', ingenieros=ingenieros,
+                                   comerciales=comerciales, temas=temas)
+
+        # Solo admin y lider_soluciones pueden asignar ingeniero
+        responsable_id = None
+        if puede_asignar_ingeniero() and f.get('responsable_id'):
+            responsable_id = int(f['responsable_id'])
+
         sol = Solicitud(
             folio=generar_folio(),
             hunter_id=int(f.get('hunter_id', current_user.id)),
@@ -224,33 +283,50 @@ def nueva_solicitud():
             fecha_solicitud=fecha_sol,
             cliente=f['cliente'].strip(),
             tema=f['tema'].strip(),
-            comentarios_comerciales=f.get('comentarios_comerciales', '').strip(),
+            comentarios_comerciales=f.get('comentarios_comerciales','').strip(),
             monto_oportunidad=float(f['monto_oportunidad']) if f.get('monto_oportunidad') else None,
-            prioridad=f.get('prioridad', 'Media'),
+            prioridad=f.get('prioridad','Media'),
             estatus='Asignada' if responsable_id else 'Capturada',
         )
         db.session.add(sol)
         db.session.flush()
         registrar_bitacora(sol.id, f'{current_user.nombre} creó la solicitud.')
+
+        # Archivos adjuntos al crear (comercial)
+        archivos = request.files.getlist('archivos_iniciales')
+        for archivo in archivos:
+            if archivo and archivo.filename and allowed_file(archivo.filename):
+                nombre_original = secure_filename(archivo.filename)
+                ext = nombre_original.rsplit('.', 1)[1].lower()
+                nombre_guardado = f"{uuid.uuid4().hex}.{ext}"
+                ruta = get_upload_path(sol.folio, 'comercial')
+                archivo.save(os.path.join(ruta, nombre_guardado))
+                doc = Documento(
+                    solicitud_id=sol.id, nombre_original=nombre_original,
+                    nombre_guardado=nombre_guardado, tipo_documento='comercial',
+                    usuario_id=current_user.id, version=1, activo=True,
+                )
+                db.session.add(doc)
+                registrar_bitacora(sol.id, f'{current_user.nombre} adjuntó "{nombre_original}" al crear la solicitud.')
+
         db.session.commit()
         flash(f'Solicitud {sol.folio} creada exitosamente.', 'success')
         return redirect(url_for('detalle_solicitud', folio=sol.folio))
 
-    return render_template('nueva_solicitud.html', ingenieros=ingenieros, comerciales=comerciales)
+    return render_template('nueva_solicitud.html', ingenieros=ingenieros,
+                           comerciales=comerciales, temas=temas)
 
 
 @app.route('/solicitudes/<folio>')
 @login_required
 def detalle_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-
     if current_user.rol == 'lider_comercial':
-        ids = [u.id for u in User.query.filter_by(rol='comercial').all()]
+        ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         if sol.hunter_id not in ids:
             flash('No tienes acceso a esta solicitud.', 'danger')
             return redirect(url_for('solicitudes'))
-
     ingenieros   = User.query.filter_by(rol='ingeniero', activo=True).all()
     estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
                     'Información Completa','Propuesta Enviada','Cerrada']
@@ -260,7 +336,7 @@ def detalle_solicitud(folio):
 
 @app.route('/solicitudes/<folio>/actualizar', methods=['POST'])
 @login_required
-@rol_requerido('ingeniero', 'lider_soluciones')
+@rol_requerido('ingeniero','lider_soluciones','administrador')
 def actualizar_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
     if current_user.rol == 'ingeniero' and sol.responsable_id != current_user.id:
@@ -270,11 +346,9 @@ def actualizar_solicitud(folio):
     f = request.form
     cambios = []
     checkboxes = {
-        'historial_surtido':    'Historial de Surtido',
-        'inventario':           'Inventario',
-        'maestro_productos':    'Maestro de Productos',
-        'historial_recepcion':  'Historial de Recepción',
-        'cuestionario_logistico': 'Cuestionario Logístico',
+        'historial_surtido':'Historial de Surtido','inventario':'Inventario',
+        'maestro_productos':'Maestro de Productos','historial_recepcion':'Historial de Recepción',
+        'cuestionario_logistico':'Cuestionario Logístico',
     }
     for campo, label in checkboxes.items():
         nuevo = campo in f
@@ -308,10 +382,10 @@ def actualizar_solicitud(folio):
 
 @app.route('/solicitudes/<folio>/envio', methods=['POST'])
 @login_required
-@rol_requerido('ingeniero', 'lider_soluciones')
+@rol_requerido('ingeniero','lider_soluciones','administrador')
 def registrar_envio(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    if not request.form.get('comentarios_envio', '').strip():
+    if not request.form.get('comentarios_envio','').strip():
         flash('Debes agregar un comentario del envío.', 'warning')
         return redirect(url_for('detalle_solicitud', folio=folio))
     sol.fecha_envio_cliente  = datetime.utcnow()
@@ -327,13 +401,11 @@ def registrar_envio(folio):
 
 @app.route('/solicitudes/<folio>/cerrar', methods=['POST'])
 @login_required
-@rol_requerido('lider_soluciones')
+@rol_requerido('lider_soluciones','administrador')
 def cerrar_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    sol.estatus              = 'Cerrada'
-    sol.fecha_cierre         = datetime.utcnow()
-    sol.usuario_cierre_id    = current_user.id
-    sol.ultima_actualizacion = datetime.utcnow()
+    sol.estatus = 'Cerrada'; sol.fecha_cierre = datetime.utcnow()
+    sol.usuario_cierre_id = current_user.id; sol.ultima_actualizacion = datetime.utcnow()
     registrar_bitacora(sol.id, f'{current_user.nombre} cerró la solicitud.')
     db.session.commit()
     flash('Solicitud cerrada.', 'success')
@@ -342,7 +414,7 @@ def cerrar_solicitud(folio):
 
 @app.route('/solicitudes/<folio>/reasignar', methods=['POST'])
 @login_required
-@rol_requerido('lider_soluciones')
+@rol_requerido('lider_soluciones','administrador')
 def reasignar_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
     nuevo_id = request.form.get('responsable_id')
@@ -350,37 +422,19 @@ def reasignar_solicitud(folio):
         nuevo_resp = db.session.get(User, int(nuevo_id))
         if nuevo_resp:
             sol.responsable_id = nuevo_resp.id
-            if sol.estatus == 'Capturada':
-                sol.estatus = 'Asignada'
+            if sol.estatus == 'Capturada': sol.estatus = 'Asignada'
             sol.ultima_actualizacion = datetime.utcnow()
-            registrar_bitacora(sol.id, f'{current_user.nombre} reasignó la solicitud a {nuevo_resp.nombre}.')
+            registrar_bitacora(sol.id, f'{current_user.nombre} reasignó a {nuevo_resp.nombre}.')
             db.session.commit()
-            flash(f'Solicitud reasignada a {nuevo_resp.nombre}.', 'success')
+            flash(f'Reasignada a {nuevo_resp.nombre}.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio))
-
-
-@app.route('/solicitudes/<folio>/eliminar', methods=['POST'])
-@login_required
-@rol_requerido('lider_comercial')
-def eliminar_solicitud(folio):
-    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    folio_guardado = sol.folio
-    cliente = sol.cliente
-    # Eliminar registros relacionados primero
-    Comentario.query.filter_by(solicitud_id=sol.id).delete()
-    Bitacora.query.filter_by(solicitud_id=sol.id).delete()
-    db.session.delete(sol)
-    db.session.commit()
-    flash(f'Solicitud {folio_guardado} ({cliente}) eliminada permanentemente.', 'success')
-    return redirect(url_for('solicitudes'))
 
 
 @app.route('/solicitudes/<folio>/comentario', methods=['POST'])
 @login_required
 def agregar_comentario(folio):
-    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    # Comercial e ingeniero pueden ver y comentar en cualquier solicitud
-    texto = request.form.get('texto', '').strip()
+    sol  = Solicitud.query.filter_by(folio=folio).first_or_404()
+    texto = request.form.get('texto','').strip()
     if not texto:
         flash('El comentario no puede estar vacío.', 'warning')
         return redirect(url_for('detalle_solicitud', folio=folio))
@@ -392,43 +446,104 @@ def agregar_comentario(folio):
     return redirect(url_for('detalle_solicitud', folio=folio))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── PANEL DE ADMINISTRACIÓN DE USUARIOS ──────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
+@app.route('/solicitudes/<folio>/eliminar', methods=['POST'])
+@login_required
+@rol_requerido('lider_comercial','administrador')
+def eliminar_solicitud(folio):
+    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+    folio_g = sol.folio; cliente = sol.cliente
+    Comentario.query.filter_by(solicitud_id=sol.id).delete()
+    Bitacora.query.filter_by(solicitud_id=sol.id).delete()
+    Documento.query.filter_by(solicitud_id=sol.id).delete()
+    db.session.delete(sol)
+    db.session.commit()
+    flash(f'Solicitud {folio_g} ({cliente}) eliminada.', 'success')
+    return redirect(url_for('solicitudes'))
 
+
+# ── Admin: Temas ─────────────────────────────────────────────────────────────
+@app.route('/admin/temas')
+@login_required
+@rol_requerido('administrador')
+def admin_temas():
+    temas = TemasSolicitud.query.order_by(TemasSolicitud.orden, TemasSolicitud.nombre).all()
+    return render_template('admin_temas.html', temas=temas)
+
+
+@app.route('/admin/temas/nuevo', methods=['POST'])
+@login_required
+@rol_requerido('administrador')
+def admin_nuevo_tema():
+    nombre = request.form.get('nombre','').strip()
+    if not nombre:
+        flash('El nombre es obligatorio.', 'danger')
+    elif TemasSolicitud.query.filter_by(nombre=nombre).first():
+        flash(f'"{nombre}" ya existe.', 'danger')
+    else:
+        db.session.add(TemasSolicitud(nombre=nombre))
+        db.session.commit()
+        flash(f'Tema "{nombre}" agregado.', 'success')
+    return redirect(url_for('admin_temas'))
+
+
+@app.route('/admin/temas/<int:tid>/toggle', methods=['POST'])
+@login_required
+@rol_requerido('administrador')
+def admin_toggle_tema(tid):
+    tema = db.session.get(TemasSolicitud, tid)
+    if tema:
+        tema.activo = not tema.activo
+        db.session.commit()
+        flash(f'Tema "{tema.nombre}" {"activado" if tema.activo else "desactivado"}.', 'success')
+    return redirect(url_for('admin_temas'))
+
+
+@app.route('/admin/temas/<int:tid>/eliminar', methods=['POST'])
+@login_required
+@rol_requerido('administrador')
+def admin_eliminar_tema(tid):
+    tema = db.session.get(TemasSolicitud, tid)
+    if tema:
+        db.session.delete(tema)
+        db.session.commit()
+        flash('Tema eliminado.', 'success')
+    return redirect(url_for('admin_temas'))
+
+
+# ── Admin: Usuarios ───────────────────────────────────────────────────────────
 @app.route('/admin/usuarios')
 @login_required
-@rol_requerido('lider_comercial', 'lider_soluciones')
+@rol_requerido('lider_comercial','lider_soluciones','aux_comercial','administrador')
 def admin_usuarios():
-    # Cada líder solo ve los roles que administra
-    if current_user.rol in ('lider_comercial', 'aux_comercial'):
-        roles_visibles = ['comercial', 'aux_comercial', 'lider_comercial']
+    if es_admin():
+        roles_visibles = list(ROLES_LABEL.keys())
+    elif current_user.rol in ('lider_comercial','aux_comercial'):
+        roles_visibles = ['comercial','aux_comercial','lider_comercial']
     else:
-        roles_visibles = ['ingeniero', 'lider_soluciones']
-
+        roles_visibles = ['ingeniero','lider_soluciones']
     usuarios = User.query.filter(User.rol.in_(roles_visibles)).order_by(User.nombre).all()
-    return render_template('admin_usuarios.html',
-                           usuarios=usuarios,
-                           roles_visibles=roles_visibles,
-                           ROLES_LABEL=ROLES_LABEL)
+    return render_template('admin_usuarios.html', usuarios=usuarios,
+                           roles_visibles=roles_visibles, ROLES_LABEL=ROLES_LABEL)
 
 
-@app.route('/admin/usuarios/nuevo', methods=['GET', 'POST'])
+@app.route('/admin/usuarios/nuevo', methods=['GET','POST'])
 @login_required
-@rol_requerido('lider_comercial', 'lider_soluciones')
+@rol_requerido('lider_comercial','lider_soluciones','aux_comercial','administrador')
 def admin_nuevo_usuario():
-    if current_user.rol in ('lider_comercial', 'aux_comercial'):
-        roles_permitidos = ['comercial', 'aux_comercial']
+    if es_admin():
+        roles_permitidos = list(ROLES_LABEL.keys())
+    elif current_user.rol in ('lider_comercial','aux_comercial'):
+        roles_permitidos = ['comercial','aux_comercial']
     else:
         roles_permitidos = ['ingeniero']
 
     if request.method == 'POST':
         f = request.form
-        username = f.get('username', '').strip().lower()
-        nombre   = f.get('nombre', '').strip()
-        rol      = f.get('rol', '')
-        password = f.get('password', '')
-        confirm  = f.get('confirm', '')
+        username = f.get('username','').strip().lower()
+        nombre   = f.get('nombre','').strip()
+        rol      = f.get('rol','')
+        password = f.get('password','')
+        confirm  = f.get('confirm','')
 
         if not all([username, nombre, rol, password]):
             flash('Todos los campos son obligatorios.', 'danger')
@@ -437,111 +552,97 @@ def admin_nuevo_usuario():
         elif password != confirm:
             flash('Las contraseñas no coinciden.', 'danger')
         elif len(password) < 6:
-            flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
+            flash('Mínimo 6 caracteres.', 'danger')
         elif User.query.filter_by(username=username).first():
             flash(f'El usuario "{username}" ya existe.', 'danger')
         else:
-            nuevo = User(username=username, nombre=nombre, rol=rol,
-                         password_hash=generate_password_hash(password))
-            db.session.add(nuevo)
+            db.session.add(User(username=username, nombre=nombre, rol=rol,
+                                password_hash=generate_password_hash(password)))
             db.session.commit()
-            flash(f'Usuario {nombre} creado correctamente.', 'success')
+            flash(f'Usuario {nombre} creado.', 'success')
             return redirect(url_for('admin_usuarios'))
 
-    return render_template('admin_form_usuario.html',
-                           usuario=None,
+    return render_template('admin_form_usuario.html', usuario=None,
                            roles_permitidos=roles_permitidos,
-                           ROLES_LABEL=ROLES_LABEL,
-                           accion='nuevo')
+                           ROLES_LABEL=ROLES_LABEL, accion='nuevo')
 
 
-@app.route('/admin/usuarios/<int:uid>/editar', methods=['GET', 'POST'])
+@app.route('/admin/usuarios/<int:uid>/editar', methods=['GET','POST'])
 @login_required
-@rol_requerido('lider_comercial', 'lider_soluciones')
+@rol_requerido('lider_comercial','lider_soluciones','aux_comercial','administrador')
 def admin_editar_usuario(uid):
     usuario = db.session.get(User, uid)
     if not usuario:
         flash('Usuario no encontrado.', 'danger')
         return redirect(url_for('admin_usuarios'))
 
-    # Verificar que el líder solo edite los suyos
-    if current_user.rol in ('lider_comercial', 'aux_comercial'):
-        roles_permitidos = ['comercial', 'aux_comercial']
+    if es_admin():
+        roles_permitidos = list(ROLES_LABEL.keys())
+    elif current_user.rol in ('lider_comercial','aux_comercial'):
+        roles_permitidos = ['comercial','aux_comercial']
     else:
         roles_permitidos = ['ingeniero']
 
-    if usuario.rol not in roles_permitidos and usuario.id != current_user.id:
+    if not es_admin() and usuario.rol not in roles_permitidos and usuario.id != current_user.id:
         flash('No puedes editar este usuario.', 'danger')
         return redirect(url_for('admin_usuarios'))
 
     if request.method == 'POST':
         f        = request.form
-        nombre   = f.get('nombre', '').strip()
-        username = f.get('username', '').strip().lower()
-        password = f.get('password', '').strip()
-        confirm  = f.get('confirm', '').strip()
+        nombre   = f.get('nombre','').strip()
+        username = f.get('username','').strip().lower()
+        password = f.get('password','').strip()
+        confirm  = f.get('confirm','').strip()
         activo   = 'activo' in f
-
-        existe = User.query.filter_by(username=username).first()
+        existe   = User.query.filter_by(username=username).first()
 
         if not nombre:
             flash('El nombre es obligatorio.', 'danger')
         elif not username:
             flash('El usuario es obligatorio.', 'danger')
         elif existe and existe.id != usuario.id:
-            flash(f'El usuario "{username}" ya está en uso por otra persona.', 'danger')
+            flash(f'El usuario "{username}" ya está en uso.', 'danger')
         elif password and password != confirm:
             flash('Las contraseñas no coinciden.', 'danger')
         elif password and len(password) < 6:
-            flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
+            flash('Mínimo 6 caracteres.', 'danger')
         else:
-            usuario.nombre   = nombre
-            usuario.username = username
-            usuario.activo   = activo
+            usuario.nombre = nombre; usuario.username = username; usuario.activo = activo
             if password:
                 usuario.password_hash = generate_password_hash(password)
             db.session.commit()
-            flash(f'Usuario {nombre} actualizado correctamente.', 'success')
+            flash(f'Usuario {nombre} actualizado.', 'success')
             return redirect(url_for('admin_usuarios'))
 
-    return render_template('admin_form_usuario.html',
-                           usuario=usuario,
+    return render_template('admin_form_usuario.html', usuario=usuario,
                            roles_permitidos=roles_permitidos,
-                           ROLES_LABEL=ROLES_LABEL,
-                           accion='editar')
+                           ROLES_LABEL=ROLES_LABEL, accion='editar')
 
 
 @app.route('/admin/usuarios/<int:uid>/toggle', methods=['POST'])
 @login_required
-@rol_requerido('lider_comercial', 'lider_soluciones')
+@rol_requerido('lider_comercial','lider_soluciones','aux_comercial','administrador')
 def admin_toggle_usuario(uid):
     usuario = db.session.get(User, uid)
     if not usuario or usuario.id == current_user.id:
         flash('Operación no permitida.', 'danger')
         return redirect(url_for('admin_usuarios'))
-
-    if current_user.rol in ('lider_comercial','aux_comercial') and usuario.rol not in ['comercial','aux_comercial']:
-        flash('No puedes modificar este usuario.', 'danger')
-        return redirect(url_for('admin_usuarios'))
-    if current_user.rol == 'lider_soluciones' and usuario.rol not in ['ingeniero']:
-        flash('No puedes modificar este usuario.', 'danger')
-        return redirect(url_for('admin_usuarios'))
-
+    if not es_admin():
+        if current_user.rol in ('lider_comercial','aux_comercial') and usuario.rol not in ['comercial','aux_comercial']:
+            flash('No puedes modificar este usuario.', 'danger')
+            return redirect(url_for('admin_usuarios'))
+        if current_user.rol == 'lider_soluciones' and usuario.rol not in ['ingeniero']:
+            flash('No puedes modificar este usuario.', 'danger')
+            return redirect(url_for('admin_usuarios'))
     usuario.activo = not usuario.activo
     db.session.commit()
-    estado = 'activado' if usuario.activo else 'desactivado'
-    flash(f'Usuario {usuario.nombre} {estado}.', 'success')
+    flash(f'Usuario {usuario.nombre} {"activado" if usuario.activo else "desactivado"}.', 'success')
     return redirect(url_for('admin_usuarios'))
 
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ── GESTIÓN DOCUMENTAL ───────────────────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-
+# ── Documentos ────────────────────────────────────────────────────────────────
 def puede_subir_doc(tipo):
-    """¿Puede el usuario actual subir/reemplazar/eliminar documentos de este tipo?"""
-    if current_user.rol in ('lider_comercial', 'lider_soluciones', 'aux_comercial'):
+    if current_user.rol in ('administrador','lider_comercial','lider_soluciones','aux_comercial'):
         return True
     if tipo == 'comercial' and current_user.rol == 'comercial':
         return True
@@ -549,55 +650,35 @@ def puede_subir_doc(tipo):
         return True
     return False
 
-def puede_descargar_doc(tipo):
-    """Todos los roles pueden descargar."""
-    return True
-
 
 @app.route('/solicitudes/<folio>/documentos/subir', methods=['POST'])
 @login_required
 def subir_documento(folio):
-    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    tipo = request.form.get('tipo_documento', '')
-
-    if tipo not in ('comercial', 'soluciones'):
-        flash('Tipo de documento inválido.', 'danger')
+    sol  = Solicitud.query.filter_by(folio=folio).first_or_404()
+    tipo = request.form.get('tipo_documento','')
+    if tipo not in ('comercial','soluciones'):
+        flash('Tipo inválido.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
     if not puede_subir_doc(tipo):
-        flash('No tienes permiso para subir documentos en esta sección.', 'danger')
+        flash('Sin permiso.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
     archivo = request.files.get('archivo')
     if not archivo or archivo.filename == '':
-        flash('No seleccionaste ningún archivo.', 'warning')
+        flash('No seleccionaste archivo.', 'warning')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
     if not allowed_file(archivo.filename):
-        flash('Formato no permitido. Usa: PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP.', 'danger')
+        flash('Formato no permitido.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
     nombre_original = secure_filename(archivo.filename)
     ext = nombre_original.rsplit('.', 1)[1].lower()
     nombre_guardado = f"{uuid.uuid4().hex}.{ext}"
-
-    ruta = get_upload_path(folio, tipo)
-    archivo.save(os.path.join(ruta, nombre_guardado))
-
-    doc = Documento(
-        solicitud_id=sol.id,
-        nombre_original=nombre_original,
-        nombre_guardado=nombre_guardado,
-        tipo_documento=tipo,
-        usuario_id=current_user.id,
-        version=1,
-        activo=True,
-    )
-    db.session.add(doc)
-    db.session.flush()
-    registrar_bitacora(sol.id, f'{current_user.nombre} cargó archivo "{nombre_original}" ({tipo}).')
+    archivo.save(os.path.join(get_upload_path(folio, tipo), nombre_guardado))
+    db.session.add(Documento(solicitud_id=sol.id, nombre_original=nombre_original,
+        nombre_guardado=nombre_guardado, tipo_documento=tipo,
+        usuario_id=current_user.id, version=1, activo=True))
+    registrar_bitacora(sol.id, f'{current_user.nombre} cargó "{nombre_original}" ({tipo}).')
     db.session.commit()
-    flash(f'Archivo "{nombre_original}" subido correctamente.', 'success')
+    flash(f'"{nombre_original}" subido.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
 
 
@@ -605,51 +686,30 @@ def subir_documento(folio):
 @login_required
 def reemplazar_documento(folio, doc_id):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    doc_anterior = db.session.get(Documento, doc_id)
-    if not doc_anterior or not doc_anterior.activo:
+    doc_ant = db.session.get(Documento, doc_id)
+    if not doc_ant or not doc_ant.activo:
         flash('Documento no encontrado.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
-    tipo = doc_anterior.tipo_documento
-    if not puede_subir_doc(tipo):
-        flash('No tienes permiso para reemplazar este documento.', 'danger')
+    if not puede_subir_doc(doc_ant.tipo_documento):
+        flash('Sin permiso.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
     archivo = request.files.get('archivo')
-    if not archivo or archivo.filename == '':
-        flash('No seleccionaste ningún archivo.', 'warning')
+    if not archivo or archivo.filename == '' or not allowed_file(archivo.filename):
+        flash('Archivo inválido.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
-    if not allowed_file(archivo.filename):
-        flash('Formato no permitido.', 'danger')
-        return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
-    # Marcar versión anterior como inactiva (histórico)
-    doc_anterior.activo = False
-
+    doc_ant.activo = False
     nombre_original = secure_filename(archivo.filename)
     ext = nombre_original.rsplit('.', 1)[1].lower()
     nombre_guardado = f"{uuid.uuid4().hex}.{ext}"
-
-    ruta = get_upload_path(folio, tipo)
-    archivo.save(os.path.join(ruta, nombre_guardado))
-
-    nueva_version = Documento(
-        solicitud_id=sol.id,
-        nombre_original=nombre_original,
-        nombre_guardado=nombre_guardado,
-        tipo_documento=tipo,
-        usuario_id=current_user.id,
-        version=doc_anterior.version + 1,
-        activo=True,
-        documento_padre_id=doc_anterior.id,
-    )
-    db.session.add(nueva_version)
-    registrar_bitacora(sol.id,
-        f'{current_user.nombre} reemplazó "{doc_anterior.nombre_original}" '
-        f'→ "{nombre_original}" (v{nueva_version.version}, {tipo}).')
+    archivo.save(os.path.join(get_upload_path(folio, doc_ant.tipo_documento), nombre_guardado))
+    nueva = Documento(solicitud_id=sol.id, nombre_original=nombre_original,
+        nombre_guardado=nombre_guardado, tipo_documento=doc_ant.tipo_documento,
+        usuario_id=current_user.id, version=doc_ant.version+1,
+        activo=True, documento_padre_id=doc_ant.id)
+    db.session.add(nueva)
+    registrar_bitacora(sol.id, f'{current_user.nombre} reemplazó "{doc_ant.nombre_original}" → "{nombre_original}" (v{nueva.version}).')
     db.session.commit()
-    flash(f'Archivo reemplazado. Nueva versión {nueva_version.version} guardada.', 'success')
+    flash(f'Reemplazado. Nueva versión {nueva.version}.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
 
 
@@ -661,23 +721,16 @@ def eliminar_documento(folio, doc_id):
     if not doc or not doc.activo:
         flash('Documento no encontrado.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
     if not puede_subir_doc(doc.tipo_documento):
-        flash('No tienes permiso para eliminar este documento.', 'danger')
+        flash('Sin permiso.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
-    # Eliminar archivo físico
-    ruta = get_upload_path(folio, doc.tipo_documento)
-    ruta_archivo = os.path.join(ruta, doc.nombre_guardado)
-    if os.path.exists(ruta_archivo):
-        os.remove(ruta_archivo)
-
-    nombre = doc.nombre_original
-    tipo   = doc.tipo_documento
+    ruta_arch = os.path.join(get_upload_path(folio, doc.tipo_documento), doc.nombre_guardado)
+    if os.path.exists(ruta_arch): os.remove(ruta_arch)
+    nombre = doc.nombre_original; tipo = doc.tipo_documento
     db.session.delete(doc)
-    registrar_bitacora(sol.id, f'{current_user.nombre} eliminó archivo "{nombre}" ({tipo}).')
+    registrar_bitacora(sol.id, f'{current_user.nombre} eliminó "{nombre}" ({tipo}).')
     db.session.commit()
-    flash(f'Archivo "{nombre}" eliminado.', 'success')
+    flash(f'"{nombre}" eliminado.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
 
 
@@ -686,69 +739,70 @@ def eliminar_documento(folio, doc_id):
 def descargar_documento(folio, doc_id):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
     doc = db.session.get(Documento, doc_id)
-    if not doc:
-        abort(404)
-
+    if not doc: abort(404)
     ruta = get_upload_path(folio, doc.tipo_documento)
     if not os.path.exists(os.path.join(ruta, doc.nombre_guardado)):
-        flash('Archivo no encontrado en el servidor.', 'danger')
+        flash('Archivo no encontrado.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
-
-    registrar_bitacora(sol.id,
-        f'{current_user.nombre} descargó "{doc.nombre_original}" ({doc.tipo_documento}).')
+    registrar_bitacora(sol.id, f'{current_user.nombre} descargó "{doc.nombre_original}" ({doc.tipo_documento}).')
     db.session.commit()
     return send_from_directory(ruta, doc.nombre_guardado,
-                               as_attachment=True,
-                               download_name=doc.nombre_original)
+                               as_attachment=True, download_name=doc.nombre_original)
 
-# ── Inicialización de DB ──────────────────────────────────────────────────────
+
+# ── Init DB ───────────────────────────────────────────────────────────────────
 def init_db():
     db.create_all()
 
+    # Seed temas
+    if TemasSolicitud.query.count() == 0:
+        for i, nombre in enumerate(TEMAS_DEFAULT):
+            db.session.add(TemasSolicitud(nombre=nombre, orden=i))
+        db.session.commit()
+
     if User.query.count() == 0:
         users = [
+            User(username='admin',               password_hash=generate_password_hash('Admin2026!'),     nombre='Administrador',       rol='administrador'),
             User(username='Francisco_Cueva',     password_hash=generate_password_hash('Lcomercial123'),  nombre='Francisco Cueva',     rol='lider_comercial'),
-            User(username='Andrés_Toledo',        password_hash=generate_password_hash('Lsoluciones123'), nombre='Andrés Toledo',        rol='lider_soluciones'),
-            User(username='Gerardo_Velazquez',    password_hash=generate_password_hash('IngeSD1231'),     nombre='Gerardo Velazquez',    rol='ingeniero'),
-            User(username='Elizabeth_Bastida',    password_hash=generate_password_hash('IngeSD1232'),     nombre='Elizabeth Bastida',    rol='ingeniero'),
-            User(username='Diego_Arzate',         password_hash=generate_password_hash('IgeSDT123'),      nombre='Diego Arzate',         rol='ingeniero'),
-            User(username='Jorge_Camarena',       password_hash=generate_password_hash('IngeSD1233'),     nombre='Jorge Camarena',       rol='ingeniero'),
-            User(username='Teresa_Ruiz',          password_hash=generate_password_hash('Hunter1231'),     nombre='Teresa Ruiz',          rol='comercial'),
-            User(username='Alejandra_Sanchez',    password_hash=generate_password_hash('Hunter1232'),     nombre='Alejandra Sánchez',    rol='comercial'),
-            User(username='Diana_Pelcastre',      password_hash=generate_password_hash('Hunter1233'),     nombre='Diana Pelcastre',      rol='comercial'),
-            User(username='Ida_Acosta',           password_hash=generate_password_hash('Hunter1234'),     nombre='Ida Acosta',           rol='comercial'),
-            User(username='Malena_Baltazar',      password_hash=generate_password_hash('Hunter1235'),     nombre='Malena Baltazar',      rol='comercial'),
-            User(username='José_Ortega',          password_hash=generate_password_hash('Hunter1236'),     nombre='José Ortega',          rol='comercial'),
+            User(username='Andrés_Toledo',       password_hash=generate_password_hash('Lsoluciones123'), nombre='Andrés Toledo',        rol='lider_soluciones'),
+            User(username='Gerardo_Velazquez',   password_hash=generate_password_hash('IngeSD1231'),     nombre='Gerardo Velazquez',   rol='ingeniero'),
+            User(username='Elizabeth_Bastida',   password_hash=generate_password_hash('IngeSD1232'),     nombre='Elizabeth Bastida',   rol='ingeniero'),
+            User(username='Diego_Arzate',        password_hash=generate_password_hash('IgeSDT123'),      nombre='Diego Arzate',        rol='ingeniero'),
+            User(username='Jorge_Camarena',      password_hash=generate_password_hash('IngeSD1233'),     nombre='Jorge Camarena',      rol='ingeniero'),
+            User(username='Teresa_Ruiz',         password_hash=generate_password_hash('Hunter1231'),     nombre='Teresa Ruiz',         rol='comercial'),
+            User(username='Alejandra_Sanchez',   password_hash=generate_password_hash('Hunter1232'),     nombre='Alejandra Sánchez',   rol='comercial'),
+            User(username='Diana_Pelcastre',     password_hash=generate_password_hash('Hunter1233'),     nombre='Diana Pelcastre',     rol='comercial'),
+            User(username='Ida_Acosta',          password_hash=generate_password_hash('Hunter1234'),     nombre='Ida Acosta',          rol='comercial'),
+            User(username='Malena_Baltazar',     password_hash=generate_password_hash('Hunter1235'),     nombre='Malena Baltazar',     rol='comercial'),
+            User(username='José_Ortega',         password_hash=generate_password_hash('Hunter1236'),     nombre='José Ortega',         rol='comercial'),
         ]
         for u in users:
             db.session.add(u)
         db.session.flush()
 
         demos = [
-            dict(hunter_id=7, responsable_id=3, fecha_solicitud=date(2026, 5, 10),
-                 cliente='FEMSA Logística', tema='Análisis de rutas de distribución',
-                 comentarios_comerciales='Cliente interesado en optimizar última milla.',
+            dict(hunter_id=8,  responsable_id=4, fecha_solicitud=date(2026, 5, 10),
+                 cliente='FEMSA Logística', tema='Transporte',
                  monto_oportunidad=850000, prioridad='Alta', estatus='En Análisis',
                  historial_surtido=True, inventario=True),
-            dict(hunter_id=8, responsable_id=4, fecha_solicitud=date(2026, 5, 20),
-                 cliente='Grupo Bimbo', tema='Propuesta de almacenamiento refrigerado',
-                 comentarios_comerciales='Necesitan solución inmediata para Q3.',
+            dict(hunter_id=9,  responsable_id=5, fecha_solicitud=date(2026, 5, 20),
+                 cliente='Grupo Bimbo', tema='Almacenaje',
                  monto_oportunidad=1200000, prioridad='Alta', estatus='Información Completa',
                  historial_surtido=True, inventario=True, maestro_productos=True,
                  historial_recepcion=True, cuestionario_logistico=True),
-            dict(hunter_id=9, responsable_id=5, fecha_solicitud=date(2026, 6, 1),
-                 cliente='Liverpool', tema='Gestión de devoluciones e-commerce',
+            dict(hunter_id=10, responsable_id=6, fecha_solicitud=date.today(),
+                 cliente='Liverpool', tema='VAS',
                  monto_oportunidad=500000, prioridad='Media', estatus='Capturada'),
-            dict(hunter_id=10, responsable_id=None, fecha_solicitud=date(2026, 6, 5),
-                 cliente='Soriana', tema='Estudio de factibilidad CD regional',
+            dict(hunter_id=11, responsable_id=None, fecha_solicitud=date.today(),
+                 cliente='Soriana', tema='Reingeniería',
                  monto_oportunidad=3000000, prioridad='Alta', estatus='Capturada'),
-            dict(hunter_id=11, responsable_id=6, fecha_solicitud=date(2026, 4, 15),
-                 cliente='Amazon MX', tema='Fulfillment centers integración',
+            dict(hunter_id=12, responsable_id=7, fecha_solicitud=date(2026, 4, 15),
+                 cliente='Amazon MX', tema='Transporte y almacenaje',
                  monto_oportunidad=4500000, prioridad='Alta', estatus='Propuesta Enviada',
                  historial_surtido=True, inventario=True, maestro_productos=True,
                  historial_recepcion=True, cuestionario_logistico=True,
-                 fecha_envio_cliente=datetime(2026, 5, 28), usuario_envio_id=6,
-                 comentarios_envio='Se envió propuesta económica completa al cliente vía correo.'),
+                 fecha_envio_cliente=datetime(2026, 5, 28), usuario_envio_id=7,
+                 comentarios_envio='Se envió propuesta económica completa al cliente.'),
         ]
         for d in demos:
             s = Solicitud(folio=generar_folio(), **d)
@@ -758,21 +812,10 @@ def init_db():
             registrar_bitacora(s.id, f'{hunter.nombre} creó la solicitud.', s.hunter_id)
 
         db.session.commit()
-        print('✅ Base de datos inicializada.')
-        print()
-        print('  Usuario               Password         Rol')
-        print('  Francisco_Cueva       Lcomercial123    Líder Comercial')
-        print('  Andrés_Toledo         Lsoluciones123   Líder de Soluciones')
-        print('  Gerardo_Velazquez     IngeSD1231       Ingeniero')
-        print('  Elizabeth_Bastida     IngeSD1232       Ingeniero')
-        print('  Diego_Arzate          IgeSDT123        Ingeniero')
-        print('  Jorge_Camarena        IngeSD1233       Ingeniero')
-        print('  Teresa_Ruiz           Hunter1231       Comercial')
-        print('  Alejandra_Sanchez     Hunter1232       Comercial')
-        print('  Diana_Pelcastre       Hunter1233       Comercial')
-        print('  Ida_Acosta            Hunter1234       Comercial')
-        print('  Malena_Baltazar       Hunter1235       Comercial')
-        print('  José_Ortega           Hunter1236       Comercial')
+        print('✅ Base de datos inicializada con usuarios y temas.')
+
+with app.app_context():
+    init_db()
 
 with app.app_context():
     init_db()
