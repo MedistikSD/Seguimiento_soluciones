@@ -176,18 +176,24 @@ def dashboard():
     tiempos = [s.dias_desde_captura() for s in cerradas]
     promedio_atencion = round(sum(tiempos)/len(tiempos), 1) if tiempos else 0
 
-    # Monto por comercial y por ingeniero para gráficas
+    # Gráficas: calculadas desde `todas` para respetar todos los filtros activos
     por_comercial_monto = {}
     por_ingeniero_monto = {}
     if es_lider():
-        for u in User.query.filter_by(rol='comercial').all():
-            monto = db.session.query(db.func.sum(Solicitud.monto_oportunidad))\
-                .filter(Solicitud.hunter_id == u.id, Solicitud.estatus != 'Cerrada').scalar() or 0
-            if monto: por_comercial_monto[u.nombre] = round(monto)
-        for u in User.query.filter_by(rol='ingeniero').all():
-            monto = db.session.query(db.func.sum(Solicitud.monto_oportunidad))\
-                .filter(Solicitud.responsable_id == u.id, Solicitud.estatus != 'Cerrada').scalar() or 0
-            if monto: por_ingeniero_monto[u.nombre] = round(monto)
+        from collections import defaultdict
+        com_montos = defaultdict(float)
+        ing_montos = defaultdict(float)
+        for s in todas:
+            if s.estatus != 'Cerrada':
+                monto = s.monto_oportunidad or 0
+                if s.hunter:
+                    com_montos[s.hunter.nombre] += monto
+                if s.responsable and s.responsable.rol == 'ingeniero':
+                    ing_montos[s.responsable.nombre] += monto
+        por_comercial_monto = {k: round(v) for k, v in
+            sorted(com_montos.items(), key=lambda x: x[1], reverse=True) if v}
+        por_ingeniero_monto = {k: round(v) for k, v in
+            sorted(ing_montos.items(), key=lambda x: x[1], reverse=True) if v}
 
     estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
                     'Información Completa','Propuesta Enviada','Cerrada']
@@ -814,8 +820,6 @@ def init_db():
         db.session.commit()
         print('✅ Base de datos inicializada con usuarios y temas.')
 
-with app.app_context():
-    init_db()
 
 with app.app_context():
     init_db()
