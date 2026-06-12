@@ -760,6 +760,67 @@ def descargar_documento(folio, doc_id):
 
 
 
+
+# ── Acciones en lote ──────────────────────────────────────────────────────────
+@app.route('/solicitudes/accion-lote', methods=['POST'])
+@login_required
+@rol_requerido('lider_comercial','lider_soluciones','administrador')
+def accion_lote():
+    folios  = request.form.getlist('folios')
+    accion  = request.form.get('accion')
+
+    if not folios:
+        flash('No seleccionaste ninguna solicitud.', 'warning')
+        return redirect(url_for('solicitudes'))
+    if accion not in ('eliminar','cerrar'):
+        flash('Acción no válida.', 'danger')
+        return redirect(url_for('solicitudes'))
+
+    # Permiso: solo admin y lider_comercial pueden eliminar
+    if accion == 'eliminar' and current_user.rol not in ('administrador','lider_comercial'):
+        flash('No tienes permiso para eliminar solicitudes.', 'danger')
+        return redirect(url_for('solicitudes'))
+
+    # Permiso: solo admin y lider_soluciones pueden cerrar
+    if accion == 'cerrar' and current_user.rol not in ('administrador','lider_soluciones'):
+        flash('No tienes permiso para cerrar solicitudes.', 'danger')
+        return redirect(url_for('solicitudes'))
+
+    procesadas = 0
+    omitidas   = 0
+
+    for folio in folios:
+        sol = Solicitud.query.filter_by(folio=folio).first()
+        if not sol:
+            continue
+
+        if accion == 'eliminar':
+            Comentario.query.filter_by(solicitud_id=sol.id).delete()
+            Bitacora.query.filter_by(solicitud_id=sol.id).delete()
+            Documento.query.filter_by(solicitud_id=sol.id).delete()
+            db.session.delete(sol)
+            procesadas += 1
+
+        elif accion == 'cerrar':
+            if sol.estatus == 'Cerrada':
+                omitidas += 1
+                continue
+            sol.estatus           = 'Cerrada'
+            sol.fecha_cierre      = datetime.utcnow()
+            sol.usuario_cierre_id = current_user.id
+            sol.ultima_actualizacion = datetime.utcnow()
+            registrar_bitacora(sol.id, f'{current_user.nombre} cerró la solicitud (acción en lote).')
+            procesadas += 1
+
+    db.session.commit()
+
+    msg = f'{procesadas} solicitud{"es" if procesadas != 1 else ""} '
+    msg += 'eliminada' + ('s' if procesadas != 1 else '') if accion == 'eliminar'           else 'cerrada' + ('s' if procesadas != 1 else '')
+    if omitidas:
+        msg += f' ({omitidas} ya estaban cerradas, omitidas).'
+    flash(msg + '.', 'success')
+    return redirect(url_for('solicitudes'))
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ── EXPORTACIONES ────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════

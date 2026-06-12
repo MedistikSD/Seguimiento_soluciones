@@ -5,15 +5,24 @@
 <div class="page-header">
   <div>
     <h2 class="page-title">Solicitudes</h2>
-    <p class="page-sub">{{ solicitudes|length }} registros encontrados</p>
+    <p class="page-sub" id="contadorRegistros">{{ solicitudes|length }} registros encontrados</p>
   </div>
-  {% if current_user.rol in ('comercial','lider_comercial') %}
-  <a href="{{ url_for('nueva_solicitud') }}" class="btn btn-primary">
-    <i class="bi bi-plus-lg me-1"></i>Nueva
-  </a>
-  {% endif %}
+  <div class="d-flex gap-2 flex-wrap">
+    {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
+    <a href="{{ url_for('nueva_solicitud') }}" class="btn btn-primary">
+      <i class="bi bi-plus-lg me-1"></i>Nueva
+    </a>
+    {% endif %}
+    {% if current_user.rol in ('administrador','lider_comercial','lider_soluciones','aux_comercial') %}
+    <a href="{{ url_for('exportar_solicitudes', **request.args) }}"
+       class="btn btn-outline-secondary" title="Exportar a Excel">
+      <i class="bi bi-file-earmark-excel me-1"></i>Excel
+    </a>
+    {% endif %}
+  </div>
 </div>
 
+<!-- Filtros -->
 <div class="filter-bar">
   <form method="GET" class="row g-2 align-items-end">
     <div class="col-6 col-md-2">
@@ -32,7 +41,7 @@
         {% endfor %}
       </select>
     </div>
-    {% if current_user.rol in ('lider_comercial','lider_soluciones') %}
+    {% if current_user.rol in ('lider_comercial','lider_soluciones','administrador','aux_comercial') %}
     <div class="col-6 col-md-2">
       <input type="text" name="comercial" class="form-control form-control-sm" placeholder="Comercial"
              value="{{ request.args.get('comercial','') }}">
@@ -44,26 +53,87 @@
     {% endif %}
     <div class="col-auto">
       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button>
-      <a href="{{ url_for('solicitudes') }}" class="btn btn-sm btn-outline-secondary ms-1"><i class="bi bi-x-lg"></i></a>
+      <a href="{{ url_for('solicitudes') }}" class="btn btn-sm btn-outline-secondary ms-1">
+        <i class="bi bi-x-lg"></i>
+      </a>
     </div>
   </form>
 </div>
 
+<!-- Barra de acciones en lote (visible solo cuando hay selección) -->
+{% if current_user.rol in ('lider_comercial','lider_soluciones','administrador') %}
+<div id="barraLote" class="barra-lote" style="display:none;">
+  <div class="barra-lote-inner">
+    <span class="barra-lote-count">
+      <i class="bi bi-check2-square me-2"></i>
+      <strong id="numSeleccionados">0</strong> seleccionadas
+    </span>
+    <div class="d-flex gap-2">
+      {% if current_user.rol in ('administrador','lider_comercial') %}
+      <button type="button" class="btn btn-sm btn-outline-danger" id="btnEliminarLote">
+        <i class="bi bi-trash3 me-1"></i>Eliminar seleccionadas
+      </button>
+      {% endif %}
+      {% if current_user.rol in ('administrador','lider_soluciones') %}
+      <button type="button" class="btn btn-sm btn-outline-warning" id="btnCerrarLote">
+        <i class="bi bi-x-circle me-1"></i>Cerrar seleccionadas
+      </button>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDeseleccionar">
+        <i class="bi bi-x-lg me-1"></i>Cancelar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Form oculto para enviar la acción en lote -->
+<form id="formLote" method="POST" action="{{ url_for('accion_lote') }}" style="display:none;">
+  <input type="hidden" name="accion" id="inputAccionLote">
+  <div id="foliosOcultos"></div>
+</form>
+{% endif %}
+
+<!-- Tabla -->
 <div class="section-card">
   <div class="table-responsive">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0" id="tablaSolicitudes">
       <thead>
         <tr>
-          <th>Folio</th><th>Cliente</th><th>Tema</th>
+          {% if current_user.rol in ('lider_comercial','lider_soluciones','administrador') %}
+          <th style="width:40px;">
+            <div class="form-check mb-0">
+              <input class="form-check-input check-header" type="checkbox" id="checkTodos"
+                     title="Seleccionar todos">
+            </div>
+          </th>
+          {% endif %}
+          <th>Folio</th>
+          <th>Cliente</th>
+          <th>Tema</th>
           <th>Comercial</th>
           <th>Ingeniero</th>
-          <th>Prioridad</th><th>Estatus</th><th>Días</th><th>Monto</th><th></th>
+          <th>Prioridad</th>
+          <th>Estatus</th>
+          <th>Días</th>
+          <th>Monto</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for s in solicitudes %}
         {% set dias = s.dias_sin_movimiento() %}
-        <tr class="{% if dias > 15 and s.estatus != 'Cerrada' %}row-danger{% elif dias > 7 and s.estatus != 'Cerrada' %}row-warning{% endif %}">
+        <tr class="fila-sol {% if dias > 15 and s.estatus != 'Cerrada' %}row-danger{% elif dias > 7 and s.estatus != 'Cerrada' %}row-warning{% endif %}"
+            data-folio="{{ s.folio }}">
+
+          {% if current_user.rol in ('lider_comercial','lider_soluciones','administrador') %}
+          <td>
+            <div class="form-check mb-0">
+              <input class="form-check-input check-fila" type="checkbox"
+                     value="{{ s.folio }}" title="Seleccionar {{ s.folio }}">
+            </div>
+          </td>
+          {% endif %}
+
           <td><span class="folio-badge">{{ s.folio }}</span></td>
           <td class="fw-medium">{{ s.cliente }}</td>
           <td class="text-truncate-cell">{{ s.tema }}</td>
@@ -71,26 +141,26 @@
           <td>{{ s.responsable.nombre if s.responsable else '<span class="text-muted">Sin asignar</span>'|safe }}</td>
           <td><span class="prioridad-{{ s.prioridad.lower() }}">{{ s.prioridad }}</span></td>
           <td><span class="badge estatus-{{ s.estatus|replace(' ','_') }}">{{ s.estatus }}</span></td>
-          <td><span class="{% if dias > 15 and s.estatus != 'Cerrada' %}text-danger fw-bold{% elif dias > 7 and s.estatus != 'Cerrada' %}text-warning-dark fw-bold{% endif %}">{{ dias }}d</span></td>
-          <td>{% if s.monto_oportunidad %}${{ "{:,.0f}".format(s.monto_oportunidad) }}{% else %}—{% endif %}</td>
           <td>
-            <div class="d-flex gap-1">
-              <a href="{{ url_for('detalle_solicitud', folio=s.folio) }}" class="btn btn-xs btn-outline-primary">Ver</a>
-              {% if current_user.rol == 'lider_comercial' %}
-              <form method="POST" action="{{ url_for('eliminar_solicitud', folio=s.folio) }}"
-                    onsubmit="return confirm('⚠️ ¿Eliminar permanentemente {{ s.folio }} ({{ s.cliente }})?\n\nEsta acción NO se puede deshacer.')">
-                <button type="submit" class="btn btn-xs btn-outline-danger" title="Eliminar">
-                  <i class="bi bi-trash3"></i>
-                </button>
-              </form>
-              {% endif %}
-            </div>
+            <span class="{% if dias > 15 and s.estatus != 'Cerrada' %}text-danger fw-bold
+                         {% elif dias > 7 and s.estatus != 'Cerrada' %}text-warning-dark fw-bold
+                         {% endif %}">{{ dias }}d</span>
+          </td>
+          <td>
+            {% if s.monto_oportunidad %}${{ "{:,.0f}".format(s.monto_oportunidad) }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('detalle_solicitud', folio=s.folio) }}"
+               class="btn btn-xs btn-outline-primary">Ver</a>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="10" class="text-center text-muted py-5">
-          <i class="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>No se encontraron solicitudes.
-        </td></tr>
+        <tr>
+          <td colspan="11" class="text-center text-muted py-5">
+            <i class="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>
+            No se encontraron solicitudes.
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
@@ -101,4 +171,81 @@
   <div class="legend-item"><span class="legend-dot danger"></span>+15 días sin movimiento</div>
   <div class="legend-item"><span class="legend-dot warning"></span>+7 días sin movimiento</div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if current_user.rol in ('lider_comercial','lider_soluciones','administrador') %}
+<script>
+const checkTodos   = document.getElementById('checkTodos');
+const barra        = document.getElementById('barraLote');
+const numLabel     = document.getElementById('numSeleccionados');
+const foliosOcul   = document.getElementById('foliosOcultos');
+const inputAccion  = document.getElementById('inputAccionLote');
+const formLote     = document.getElementById('formLote');
+const total        = {{ solicitudes|length }};
+
+function getChecked() {
+  return [...document.querySelectorAll('.check-fila:checked')];
+}
+
+function actualizarBarra() {
+  const sel = getChecked();
+  numLabel.textContent = sel.length;
+  barra.style.display  = sel.length > 0 ? 'flex' : 'none';
+  // sync header checkbox
+  if (checkTodos) {
+    checkTodos.indeterminate = sel.length > 0 && sel.length < total;
+    checkTodos.checked = sel.length === total && total > 0;
+  }
+}
+
+// Select all
+if (checkTodos) {
+  checkTodos.addEventListener('change', function() {
+    document.querySelectorAll('.check-fila').forEach(cb => cb.checked = this.checked);
+    actualizarBarra();
+  });
+}
+
+// Individual checkboxes
+document.querySelectorAll('.check-fila').forEach(cb => {
+  cb.addEventListener('change', actualizarBarra);
+});
+
+// Deselect all
+document.getElementById('btnDeseleccionar').addEventListener('click', function() {
+  document.querySelectorAll('.check-fila').forEach(cb => cb.checked = false);
+  if (checkTodos) checkTodos.checked = false;
+  actualizarBarra();
+});
+
+function ejecutarAccion(accion) {
+  const sel = getChecked();
+  if (!sel.length) return;
+
+  const verbos = { eliminar: 'eliminar', cerrar: 'cerrar' };
+  const count  = sel.length;
+  const msg    = `¿${verbos[accion].charAt(0).toUpperCase() + verbos[accion].slice(1)} ${count} solicitud${count !== 1 ? 'es' : ''}?\n\n` +
+                 sel.map(cb => cb.value).join('\n') +
+                 (accion === 'eliminar' ? '\n\n⚠️ Esta acción es permanente e irreversible.' : '');
+
+  if (!confirm(msg)) return;
+
+  // Build hidden inputs
+  foliosOcul.innerHTML = sel.map(cb =>
+    `<input type="hidden" name="folios" value="${cb.value}">`
+  ).join('');
+  inputAccion.value = accion;
+  formLote.submit();
+}
+
+{% if current_user.rol in ('administrador','lider_comercial') %}
+document.getElementById('btnEliminarLote').addEventListener('click', () => ejecutarAccion('eliminar'));
+{% endif %}
+
+{% if current_user.rol in ('administrador','lider_soluciones') %}
+document.getElementById('btnCerrarLote').addEventListener('click', () => ejecutarAccion('cerrar'));
+{% endif %}
+</script>
+{% endif %}
 {% endblock %}
