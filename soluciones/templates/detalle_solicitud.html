@@ -65,7 +65,11 @@
     <div class="section-card mb-4">
       <div class="section-card-header">
         <h5 class="mb-0"><i class="bi bi-briefcase me-2"></i>Información Comercial</h5>
-        <span class="prioridad-{{ sol.prioridad.lower() }}">{{ sol.prioridad }}</span>
+        {% if sol.prioridad %}
+        <span class="prioridad-num-badge">#{{ sol.prioridad }}</span>
+        {% else %}
+        <span class="prioridad-sin">Sin prioridad</span>
+        {% endif %}
       </div>
       <div class="p-4">
         <div class="row g-3">
@@ -234,6 +238,20 @@
             <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
           </div>
         </form>
+        <!-- Asignar prioridad numérica -->
+        <form method="POST" action="{{ url_for('actualizar_prioridad', folio=sol.folio) }}" class="mb-3">
+          <label class="form-label fw-semibold">Prioridad del comercial</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-sort-numeric-up"></i></span>
+            <input type="number" name="prioridad" class="form-control form-control-sm"
+                   min="1" step="1"
+                   value="{{ sol.prioridad if sol.prioridad else '' }}"
+                   placeholder="Ej. 1, 2, 3…">
+            <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
+          </div>
+          <div class="form-text">Número de orden para el comercial (1 = más urgente).</div>
+        </form>
+
         {% if sol.estatus != 'Cerrada' %}
         <form method="POST" action="{{ url_for('cerrar_solicitud', folio=sol.folio) }}"
               onsubmit="return confirm('¿Confirmas cerrar esta solicitud?')">
@@ -403,10 +421,14 @@
           <input type="hidden" name="tipo_documento" value="{{ tipo }}">
           <div class="modal-body">
             <label class="form-label required">Selecciona el archivo</label>
-            <input type="file" name="archivo" class="form-control" required
-                   accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip">
-            <div class="form-text mt-2">
-              Formatos: PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB
+            <div class="dropzone dropzone-sm" onclick="this.querySelector('input').click()">
+              <input type="file" name="archivo" required
+                     accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip"
+                     style="display:none" onchange="previewFile(this)">
+              <div class="dropzone-icon" style="font-size:20px"><i class="bi bi-cloud-upload"></i></div>
+              <div class="dropzone-text" style="font-size:13px">Arrastra o <span class="dropzone-link">selecciona</span></div>
+              <div class="dropzone-hint">PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB</div>
+              <div class="dz-preview-name" style="display:none;margin-top:6px;font-size:12px;color:var(--turquesa)"></div>
             </div>
           </div>
           <div class="modal-footer" style="border-color:var(--bg-border);">
@@ -480,5 +502,25 @@ document.querySelectorAll('.nav-tab-link').forEach(el => {
     else history.replaceState(null, '', window.location.pathname);
   });
 });
+</script>
+<script>
+// Drag & drop en modales de archivos
+document.querySelectorAll('.dropzone-sm').forEach(dz => {
+  const inp = dz.querySelector('input[type=file]');
+  const prev = dz.querySelector('.dz-preview-name');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', e => { if (!dz.contains(e.relatedTarget)) dz.classList.remove('dragover'); });
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('dragover');
+    const dt = new DataTransfer();
+    [...e.dataTransfer.files].slice(0,1).forEach(f => dt.items.add(f));
+    inp.files = dt.files;
+    if (inp.files[0]) { prev.textContent = '📎 ' + inp.files[0].name; prev.style.display='block'; }
+  });
+});
+function previewFile(inp) {
+  const prev = inp.closest('.dropzone-sm').querySelector('.dz-preview-name');
+  if (inp.files[0]) { prev.textContent = '📎 ' + inp.files[0].name; prev.style.display='block'; }
+}
 </script>
 {% endblock %}

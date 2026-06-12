@@ -62,7 +62,7 @@
           </div>
 
           <div class="col-md-6">
-            <label class="form-label">Monto aproximado de oportunidad (MXN)</label>
+            <label class="form-label">Monto aproximado de oportunidad (MXN) <span class="text-muted fw-normal">mensual</span></label>
             <div class="input-group">
               <span class="input-group-text">$</span>
               <input type="number" name="monto_oportunidad" class="form-control"
@@ -71,15 +71,9 @@
           </div>
 
           <div class="col-md-6">
-            <label class="form-label required">Prioridad</label>
-            <div class="d-flex gap-3 mt-1">
-              {% for p in ['Alta','Media','Baja'] %}
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="prioridad"
-                       id="p{{ p }}" value="{{ p }}" {% if p == 'Media' %}checked{% endif %} required>
-                <label class="form-check-label prioridad-{{ p.lower() }}" for="p{{ p }}">{{ p }}</label>
-              </div>
-              {% endfor %}
+            <div class="prioridad-info-box">
+              <i class="bi bi-info-circle me-2" style="color:var(--turquesa)"></i>
+              <span>La prioridad la asigna el <strong>Líder</strong> después de crear la solicitud.</span>
             </div>
           </div>
 
@@ -103,9 +97,15 @@
               <i class="bi bi-paperclip me-1"></i>Archivos adjuntos
               <span class="text-muted fw-normal">(opcional)</span>
             </label>
-            <input type="file" name="archivos_iniciales" class="form-control"
-                   multiple accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip">
-            <div class="form-text">PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB por archivo · Puedes seleccionar varios</div>
+            <div class="dropzone" id="dropzone" onclick="document.getElementById('archivoInput').click()">
+              <input type="file" name="archivos_iniciales" id="archivoInput"
+                     multiple accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.jpeg,.zip"
+                     style="display:none" onchange="mostrarArchivos(this.files)">
+              <div class="dropzone-icon"><i class="bi bi-cloud-upload"></i></div>
+              <div class="dropzone-text">Arrastra archivos aquí o <span class="dropzone-link">haz clic para seleccionar</span></div>
+              <div class="dropzone-hint">PDF, XLSX, XLS, PPTX, DOCX, PNG, JPG, ZIP · Máx. 50 MB por archivo</div>
+              <div id="archivosListados" class="archivos-listados"></div>
+            </div>
           </div>
 
         </div>
@@ -144,5 +144,58 @@ const hoy = new Date().toISOString().split('T')[0];
 const inputFecha = document.getElementById('fechaSolicitud');
 inputFecha.min = hoy;
 inputFecha.value = hoy;
+
+// ── Drag & Drop ────────────────────────────────
+const dz    = document.getElementById('dropzone');
+const input = document.getElementById('archivoInput');
+let   archivosActuales = [];
+
+function mostrarArchivos(files) {
+  // Merge con lista existente (sin duplicados por nombre)
+  const nuevos = [...files];
+  nuevos.forEach(f => {
+    if (!archivosActuales.find(a => a.name === f.name)) archivosActuales.push(f);
+  });
+  renderListado();
+  sincronizarInput();
+}
+
+function renderListado() {
+  const el = document.getElementById('archivosListados');
+  if (!archivosActuales.length) { el.innerHTML = ''; return; }
+  el.innerHTML = archivosActuales.map((f, i) => `
+    <div class="archivo-chip">
+      <span class="archivo-ext">${f.name.split('.').pop().toUpperCase()}</span>
+      <span class="archivo-nombre">${f.name}</span>
+      <span class="archivo-size">${(f.size/1024/1024).toFixed(1)} MB</span>
+      <button type="button" class="archivo-remove" onclick="quitarArchivo(${i})">&times;</button>
+    </div>`).join('');
+}
+
+function quitarArchivo(idx) {
+  archivosActuales.splice(idx, 1);
+  renderListado();
+  sincronizarInput();
+}
+
+function sincronizarInput() {
+  // Rebuild DataTransfer to set files on input
+  const dt = new DataTransfer();
+  archivosActuales.forEach(f => dt.items.add(f));
+  input.files = dt.files;
+}
+
+dz.addEventListener('dragover', e => {
+  e.preventDefault();
+  dz.classList.add('dragover');
+});
+dz.addEventListener('dragleave', e => {
+  if (!dz.contains(e.relatedTarget)) dz.classList.remove('dragover');
+});
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragover');
+  mostrarArchivos(e.dataTransfer.files);
+});
 </script>
 {% endblock %}

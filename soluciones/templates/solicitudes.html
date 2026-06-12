@@ -139,7 +139,13 @@
           <td class="text-truncate-cell">{{ s.tema }}</td>
           <td>{{ s.hunter.nombre if s.hunter else '—' }}</td>
           <td>{{ s.responsable.nombre if s.responsable else '<span class="text-muted">Sin asignar</span>'|safe }}</td>
-          <td><span class="prioridad-{{ s.prioridad.lower() }}">{{ s.prioridad }}</span></td>
+          <td>
+            {% if s.prioridad %}
+              <span class="prioridad-num-badge">#{{ s.prioridad }}</span>
+            {% else %}
+              <span class="text-muted" style="font-size:12px">—</span>
+            {% endif %}
+          </td>
           <td><span class="badge estatus-{{ s.estatus|replace(' ','_') }}">{{ s.estatus }}</span></td>
           <td>
             <span class="{% if dias > 15 and s.estatus != 'Cerrada' %}text-danger fw-bold

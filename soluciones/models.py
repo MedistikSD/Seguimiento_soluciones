@@ -1,12 +1,17 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 db = SQLAlchemy()
 
+CDMX_OFFSET = timedelta(hours=-6)
 
-def utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+def cdmx_now():
+    """Hora actual en Ciudad de México (GMT-6, sin DST)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None) + CDMX_OFFSET
+
+# Alias para compatibilidad
+utcnow = cdmx_now
 
 
 class User(UserMixin, db.Model):
@@ -44,7 +49,7 @@ class Solicitud(db.Model):
     tema          = db.Column(db.String(300), nullable=False)
     comentarios_comerciales = db.Column(db.Text, nullable=True)
     monto_oportunidad = db.Column(db.Float, nullable=True)
-    prioridad     = db.Column(db.String(10), nullable=False, default='Media')
+    prioridad     = db.Column(db.Integer, nullable=True)  # Número de orden asignado por líder (1 = más urgente)
     estatus       = db.Column(db.String(40), nullable=False, default='Capturada')
     ultima_actualizacion = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -75,10 +80,10 @@ class Solicitud(db.Model):
 
     def dias_sin_movimiento(self):
         ref = self.ultima_actualizacion or self.fecha_captura
-        return (datetime.utcnow() - ref).days
+        return (cdmx_now() - ref).days
 
     def dias_desde_captura(self):
-        return (datetime.utcnow() - self.fecha_captura).days
+        return (cdmx_now() - self.fecha_captura).days
 
     def actualizar_estatus_automatico(self):
         if self.estatus == 'Cerrada':

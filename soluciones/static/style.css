@@ -730,3 +730,75 @@ hr { border-color: var(--bg-border); opacity: 1; }
 .btn-outline-warning:hover {
   background: rgba(245,158,11,.15) !important;
 }
+
+/* ── PRIORIDAD NUMÉRICA ───────────────────────── */
+.prioridad-num-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 28px; height: 22px; border-radius: 4px;
+  background: rgba(75,184,200,.15); color: var(--turquesa);
+  border: 1px solid rgba(75,184,200,.3);
+  font-size: 11px; font-weight: 800; font-family: 'Courier New', monospace;
+  padding: 0 6px;
+}
+.prioridad-sin {
+  font-size: 11px; color: var(--text-tertiary); font-style: italic;
+}
+.prioridad-info-box {
+  background: rgba(75,184,200,.06);
+  border: 1px solid rgba(75,184,200,.2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px; color: var(--text-secondary);
+  display: flex; align-items: center;
+  height: 100%;
+}
+
+/* ── DROPZONE ─────────────────────────────────── */
+.dropzone {
+  border: 2px dashed var(--bg-border);
+  border-radius: var(--radius);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--bg-surface);
+  user-select: none;
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--turquesa);
+  background: rgba(75,184,200,.05);
+}
+.dropzone.dragover { transform: scale(1.01); }
+.dropzone-sm { padding: 16px 14px; border-radius: var(--radius-sm); }
+.dropzone-icon {
+  font-size: 32px; color: var(--text-tertiary);
+  margin-bottom: 8px; line-height: 1;
+  transition: color var(--transition);
+}
+.dropzone:hover .dropzone-icon,
+.dropzone.dragover .dropzone-icon { color: var(--turquesa); }
+.dropzone-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+.dropzone-link { color: var(--turquesa); text-decoration: underline; }
+.dropzone-hint { font-size: 11px; color: var(--text-tertiary); }
+
+/* Archivo chips listados */
+.archivos-listados { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.archivo-chip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-hover); border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm); padding: 6px 10px;
+  font-size: 12px;
+}
+.archivo-ext {
+  background: rgba(75,184,200,.15); color: var(--turquesa);
+  font-size: 9px; font-weight: 800; padding: 2px 5px;
+  border-radius: 3px; flex-shrink: 0;
+}
+.archivo-nombre { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.archivo-size { color: var(--text-tertiary); font-size: 11px; flex-shrink: 0; }
+.archivo-remove {
+  background: none; border: none; color: var(--text-tertiary);
+  font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px;
+  transition: color var(--transition); flex-shrink: 0;
+}
+.archivo-remove:hover { color: var(--danger); }

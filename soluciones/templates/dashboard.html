@@ -155,7 +155,12 @@
           <td>{{ s.cliente }}</td>
           <td><span class="tema-chip">{{ s.tema }}</span></td>
           <td><span class="badge estatus-{{ s.estatus|replace(' ','_') }}">{{ s.estatus }}</span></td>
-          <td><span class="prioridad-{{ s.prioridad.lower() }}">{{ s.prioridad }}</span></td>
+          <td>
+            {% if s.prioridad %}
+              <span class="prioridad-num-badge">#{{ s.prioridad }}</span>
+            {% else %}<span class="text-muted" style="font-size:11px">—</span>
+            {% endif %}
+          </td>
           <td>
             {% set dias = s.dias_sin_movimiento() %}
             <span class="{% if dias > 15 %}text-danger fw-bold{% elif dias > 7 %}text-warning-dark fw-bold{% endif %}">{{ dias }}d</span>

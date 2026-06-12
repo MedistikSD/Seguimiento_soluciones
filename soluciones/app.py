@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from functools import wraps
-from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud
+from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud, cdmx_now
 import os, uuid, csv, io
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -83,7 +83,7 @@ def get_upload_path(folio, tipo):
     return path
 
 def generar_folio():
-    anio = datetime.utcnow().year
+    anio = cdmx_now().year
     ultima = (Solicitud.query
               .filter(Solicitud.folio.like(f'SOL-{anio}-%'))
               .order_by(Solicitud.id.desc()).first())
@@ -293,7 +293,7 @@ def nueva_solicitud():
             tema=f['tema'].strip(),
             comentarios_comerciales=f.get('comentarios_comerciales','').strip(),
             monto_oportunidad=float(f['monto_oportunidad']) if f.get('monto_oportunidad') else None,
-            prioridad=f.get('prioridad','Media'),
+            prioridad=None,  # Asignada por líder después
             estatus='Asignada' if responsable_id else 'Capturada',
         )
         db.session.add(sol)
@@ -380,7 +380,7 @@ def actualizar_solicitud(folio):
             sol.estatus = nuevo_est
             cambios.append(f'{current_user.nombre} cambió estatus a "{nuevo_est}".')
 
-    sol.ultima_actualizacion = datetime.utcnow()
+    sol.ultima_actualizacion = cdmx_now()
     sol.actualizar_estatus_automatico()
     for c in cambios:
         registrar_bitacora(sol.id, c)
@@ -397,11 +397,11 @@ def registrar_envio(folio):
     if not request.form.get('comentarios_envio','').strip():
         flash('Debes agregar un comentario del envío.', 'warning')
         return redirect(url_for('detalle_solicitud', folio=folio))
-    sol.fecha_envio_cliente  = datetime.utcnow()
+    sol.fecha_envio_cliente  = cdmx_now()
     sol.usuario_envio_id     = current_user.id
     sol.comentarios_envio    = request.form['comentarios_envio'].strip()
     sol.estatus              = 'Propuesta Enviada'
-    sol.ultima_actualizacion = datetime.utcnow()
+    sol.ultima_actualizacion = cdmx_now()
     registrar_bitacora(sol.id, f'{current_user.nombre} registró envío de propuesta al cliente.')
     db.session.commit()
     flash('Envío registrado exitosamente.', 'success')
@@ -413,8 +413,8 @@ def registrar_envio(folio):
 @rol_requerido('lider_soluciones','administrador')
 def cerrar_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    sol.estatus = 'Cerrada'; sol.fecha_cierre = datetime.utcnow()
-    sol.usuario_cierre_id = current_user.id; sol.ultima_actualizacion = datetime.utcnow()
+    sol.estatus = 'Cerrada'; sol.fecha_cierre = cdmx_now()
+    sol.usuario_cierre_id = current_user.id; sol.ultima_actualizacion = cdmx_now()
     registrar_bitacora(sol.id, f'{current_user.nombre} cerró la solicitud.')
     db.session.commit()
     flash('Solicitud cerrada.', 'success')
@@ -432,7 +432,7 @@ def reasignar_solicitud(folio):
         if nuevo_resp:
             sol.responsable_id = nuevo_resp.id
             if sol.estatus == 'Capturada': sol.estatus = 'Asignada'
-            sol.ultima_actualizacion = datetime.utcnow()
+            sol.ultima_actualizacion = cdmx_now()
             registrar_bitacora(sol.id, f'{current_user.nombre} reasignó a {nuevo_resp.nombre}.')
             db.session.commit()
             flash(f'Reasignada a {nuevo_resp.nombre}.', 'success')
@@ -448,7 +448,7 @@ def agregar_comentario(folio):
         flash('El comentario no puede estar vacío.', 'warning')
         return redirect(url_for('detalle_solicitud', folio=folio))
     db.session.add(Comentario(solicitud_id=sol.id, usuario_id=current_user.id, texto=texto))
-    sol.ultima_actualizacion = datetime.utcnow()
+    sol.ultima_actualizacion = cdmx_now()
     registrar_bitacora(sol.id, f'{current_user.nombre} agregó un comentario.')
     db.session.commit()
     flash('Comentario agregado.', 'success')
@@ -761,6 +761,29 @@ def descargar_documento(folio, doc_id):
 
 
 
+
+@app.route('/solicitudes/<folio>/prioridad', methods=['POST'])
+@login_required
+@rol_requerido('lider_comercial','lider_soluciones','administrador')
+def actualizar_prioridad(folio):
+    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+    valor = request.form.get('prioridad','').strip()
+    try:
+        num = int(valor) if valor else None
+        if num is not None and num < 1:
+            raise ValueError
+    except ValueError:
+        flash('La prioridad debe ser un número mayor a 0.', 'danger')
+        return redirect(url_for('detalle_solicitud', folio=folio))
+
+    sol.prioridad = num
+    sol.ultima_actualizacion = cdmx_now()
+    label = f'#{num}' if num else 'sin prioridad'
+    registrar_bitacora(sol.id, f'{current_user.nombre} asignó prioridad {label}.')
+    db.session.commit()
+    flash(f'Prioridad actualizada a {label}.', 'success')
+    return redirect(url_for('detalle_solicitud', folio=folio))
+
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])
 @login_required
@@ -806,9 +829,9 @@ def accion_lote():
                 omitidas += 1
                 continue
             sol.estatus           = 'Cerrada'
-            sol.fecha_cierre      = datetime.utcnow()
+            sol.fecha_cierre      = cdmx_now()
             sol.usuario_cierre_id = current_user.id
-            sol.ultima_actualizacion = datetime.utcnow()
+            sol.ultima_actualizacion = cdmx_now()
             registrar_bitacora(sol.id, f'{current_user.nombre} cerró la solicitud (acción en lote).')
             procesadas += 1
 
@@ -943,7 +966,7 @@ def exportar_solicitudes():
     wb.save(buf)
     buf.seek(0)
 
-    fecha_str = datetime.utcnow().strftime('%Y%m%d_%H%M')
+    fecha_str = cdmx_now().strftime('%Y%m%d_%H%M')
     filename = f"SeguimientoSD_Solicitudes_{fecha_str}.xlsx"
     return Response(
         buf.getvalue(),
@@ -978,7 +1001,7 @@ def exportar_usuarios():
             u.solicitudes_asignadas.count(),
         ])
 
-    fecha_str = datetime.utcnow().strftime('%Y%m%d_%H%M')
+    fecha_str = cdmx_now().strftime('%Y%m%d_%H%M')
     filename = f"SeguimientoSD_Usuarios_{fecha_str}.csv"
     return Response(
         '﻿' + output.getvalue(),   # BOM para que Excel lo abra bien
@@ -1021,22 +1044,22 @@ def init_db():
         demos = [
             dict(hunter_id=8,  responsable_id=4, fecha_solicitud=date(2026, 5, 10),
                  cliente='FEMSA Logística', tema='Transporte',
-                 monto_oportunidad=850000, prioridad='Alta', estatus='En Análisis',
+                 monto_oportunidad=850000, prioridad=1, estatus='En Análisis',
                  historial_surtido=True, inventario=True),
             dict(hunter_id=9,  responsable_id=5, fecha_solicitud=date(2026, 5, 20),
                  cliente='Grupo Bimbo', tema='Almacenaje',
-                 monto_oportunidad=1200000, prioridad='Alta', estatus='Información Completa',
+                 monto_oportunidad=1200000, prioridad=1, estatus='Información Completa',
                  historial_surtido=True, inventario=True, maestro_productos=True,
                  historial_recepcion=True, cuestionario_logistico=True),
             dict(hunter_id=10, responsable_id=6, fecha_solicitud=date.today(),
                  cliente='Liverpool', tema='VAS',
-                 monto_oportunidad=500000, prioridad='Media', estatus='Capturada'),
+                 monto_oportunidad=500000, prioridad=2, estatus='Capturada'),
             dict(hunter_id=11, responsable_id=None, fecha_solicitud=date.today(),
                  cliente='Soriana', tema='Reingeniería',
-                 monto_oportunidad=3000000, prioridad='Alta', estatus='Capturada'),
+                 monto_oportunidad=3000000, prioridad=1, estatus='Capturada'),
             dict(hunter_id=12, responsable_id=7, fecha_solicitud=date(2026, 4, 15),
                  cliente='Amazon MX', tema='Transporte y almacenaje',
-                 monto_oportunidad=4500000, prioridad='Alta', estatus='Propuesta Enviada',
+                 monto_oportunidad=4500000, prioridad=1, estatus='Propuesta Enviada',
                  historial_surtido=True, inventario=True, maestro_productos=True,
                  historial_recepcion=True, cuestionario_logistico=True,
                  fecha_envio_cliente=datetime(2026, 5, 28), usuario_envio_id=7,
