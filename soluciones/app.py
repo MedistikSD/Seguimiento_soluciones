@@ -17,6 +17,9 @@ ALLOWED_EXTENSIONS = {'pdf','xlsx','xls','pptx','docx','png','jpg','jpeg','zip'}
 
 db.init_app(app)
 
+with app.app_context():
+    db.create_all()
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Inicia sesión para continuar.'
