@@ -77,19 +77,7 @@
             </div>
           </div>
 
-          <!-- Ingeniero: solo admin y lider_soluciones -->
-          {% if current_user.rol in ('administrador','lider_soluciones') %}
-          <div class="col-12">
-            <label class="form-label">Ingeniero Responsable</label>
-            <select name="responsable_id" class="form-select">
-              <option value="">— Sin asignar —</option>
-              {% for ing in ingenieros %}
-              <option value="{{ ing.id }}">{{ ing.nombre }}</option>
-              {% endfor %}
-            </select>
-            <div class="form-text">Solo el Administrador y el Líder de Soluciones pueden asignar ingenieros.</div>
-          </div>
-          {% endif %}
+          <!-- Ingeniero se asigna desde el detalle por el Líder de Soluciones -->
 
           <!-- Archivos adjuntos iniciales -->
           <div class="col-12">

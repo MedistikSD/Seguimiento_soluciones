@@ -193,7 +193,8 @@ body {
 .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .kpi-icon {
   position: absolute; top: 16px; right: 16px;
-  font-size: 28px; opacity: .1;
+  font-size: 26px; opacity: .45;
+  color: #E2E8F0;
 }
 .kpi-value { font-size: 28px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
 .kpi-unit  { font-size: 13px; font-weight: 500; margin-left: 2px; }

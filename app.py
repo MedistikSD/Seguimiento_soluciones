@@ -153,11 +153,12 @@ def recuperar_password():
 def dashboard():
     q = Solicitud.query
 
-    # administrador y lider_soluciones ven TODAS las solicitudes sin restricción
+    # administrador y lider_soluciones ven TODAS sin restricción
     if current_user.rol in ('lider_comercial', 'aux_comercial'):
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
+    # lider_soluciones e ingeniero tienen su propio scope en lógica de charts
 
     # Filtros dashboard
     f_estatus  = request.args.get('f_estatus', '').strip()
@@ -229,6 +230,8 @@ def solicitudes():
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
+    elif current_user.rol == 'ingeniero':
+        q = q.filter(Solicitud.responsable_id == current_user.id)
 
     folio       = request.args.get('folio','').strip()
     cliente     = request.args.get('cliente','').strip()
@@ -261,7 +264,7 @@ def solicitudes():
 @rol_requerido('comercial','lider_comercial','aux_comercial','administrador')
 def nueva_solicitud():
     ingenieros  = User.query.filter_by(rol='ingeniero', activo=True).all()
-    comerciales = User.query.filter(User.rol.in_(['comercial','aux_comercial']), User.activo==True).all()
+    comerciales = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial']), User.activo==True).all()
     temas       = get_temas()
 
     if request.method == 'POST':
@@ -279,10 +282,8 @@ def nueva_solicitud():
             return render_template('nueva_solicitud.html', ingenieros=ingenieros,
                                    comerciales=comerciales, temas=temas)
 
-        # Solo admin y lider_soluciones pueden asignar ingeniero
+        # El ingeniero siempre se asigna después desde el detalle (solo lider_soluciones)
         responsable_id = None
-        if puede_asignar_ingeniero() and f.get('responsable_id'):
-            responsable_id = int(f['responsable_id'])
 
         sol = Solicitud(
             folio=generar_folio(),
@@ -329,7 +330,7 @@ def nueva_solicitud():
 @login_required
 def detalle_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    # administrador y lider_soluciones acceden a cualquier solicitud
+    # administrador y lider_soluciones acceden a cualquier solicitud sin filtro
     if current_user.rol in ('lider_comercial', 'aux_comercial'):
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
@@ -348,7 +349,7 @@ def detalle_solicitud(folio):
 @rol_requerido('ingeniero','lider_soluciones','administrador')
 def actualizar_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    if current_user.rol == 'ingeniero' and sol.responsable_id != current_user.id:
+    if current_user.rol == 'ingeniero' and sol.responsable_id != current_user.id and not es_admin():
         flash('No tienes permiso para actualizar esta solicitud.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio))
 
@@ -859,6 +860,9 @@ def exportar_solicitudes():
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
+    elif current_user.rol == 'lider_soluciones':
+        pass  # ve todas
+    # administrador ve todas sin filtro
 
     # Filtros opcionales por querystring
     f_estatus   = request.args.get('f_estatus','').strip()
