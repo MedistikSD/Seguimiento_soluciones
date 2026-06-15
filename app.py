@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from functools import wraps
 from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud, cdmx_now
-import os, uuid, csv, io
+import os, uuid, csv, io, zipfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -1015,6 +1015,90 @@ def exportar_usuarios():
         '﻿' + output.getvalue(),   # BOM para que Excel lo abra bien
         mimetype='text/csv; charset=utf-8',
         headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── RESPALDO DE ARCHIVOS ─────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/admin/backup')
+@login_required
+@rol_requerido('administrador')
+def backup_uploads():
+    """Página de respaldo — muestra estadísticas antes de descargar."""
+    stats = {'total_archivos': 0, 'total_size': 0, 'solicitudes': []}
+
+    if os.path.exists(UPLOAD_BASE):
+        for folio in sorted(os.listdir(UPLOAD_BASE)):
+            folio_path = os.path.join(UPLOAD_BASE, folio)
+            if not os.path.isdir(folio_path):
+                continue
+            archivos = []
+            for tipo in ['comercial', 'soluciones']:
+                tipo_path = os.path.join(folio_path, tipo)
+                if os.path.isdir(tipo_path):
+                    for fname in os.listdir(tipo_path):
+                        fpath = os.path.join(tipo_path, fname)
+                        if os.path.isfile(fpath):
+                            size = os.path.getsize(fpath)
+                            # Buscar nombre original en BD
+                            doc = Documento.query.filter_by(
+                                nombre_guardado=fname, activo=True).first()
+                            archivos.append({
+                                'tipo': tipo,
+                                'nombre': doc.nombre_original if doc else fname,
+                                'size': size,
+                            })
+                            stats['total_archivos'] += 1
+                            stats['total_size'] += size
+            if archivos:
+                stats['solicitudes'].append({
+                    'folio': folio,
+                    'archivos': archivos,
+                    'count': len(archivos),
+                })
+
+    stats['total_size_mb'] = round(stats['total_size'] / 1024 / 1024, 2)
+    return render_template('admin_backup.html', stats=stats)
+
+
+@app.route('/admin/backup/descargar')
+@login_required
+@rol_requerido('administrador')
+def descargar_backup():
+    """Genera y descarga un ZIP con todos los archivos de uploads/."""
+    buf = io.BytesIO()
+
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        if os.path.exists(UPLOAD_BASE):
+            for folio in os.listdir(UPLOAD_BASE):
+                folio_path = os.path.join(UPLOAD_BASE, folio)
+                if not os.path.isdir(folio_path):
+                    continue
+                for tipo in ['comercial', 'soluciones']:
+                    tipo_path = os.path.join(folio_path, tipo)
+                    if not os.path.isdir(tipo_path):
+                        continue
+                    for fname in os.listdir(tipo_path):
+                        fpath = os.path.join(tipo_path, fname)
+                        if not os.path.isfile(fpath):
+                            continue
+                        # Buscar nombre original para el ZIP
+                        doc = Documento.query.filter_by(
+                            nombre_guardado=fname, activo=True).first()
+                        nombre_zip = doc.nombre_original if doc else fname
+                        # Ruta dentro del ZIP: folio/tipo/nombre_original
+                        arcname = os.path.join(folio, tipo, nombre_zip)
+                        zf.write(fpath, arcname)
+
+    buf.seek(0)
+    fecha_str = cdmx_now().strftime('%Y%m%d_%H%M')
+    filename = f'SeguimientoSD_Archivos_{fecha_str}.zip'
+    return Response(
+        buf.getvalue(),
+        mimetype='application/zip',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
 
 # ── Init DB ───────────────────────────────────────────────────────────────────

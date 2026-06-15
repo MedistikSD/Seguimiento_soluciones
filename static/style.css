@@ -803,3 +803,35 @@ hr { border-color: var(--bg-border); opacity: 1; }
   transition: color var(--transition); flex-shrink: 0;
 }
 .archivo-remove:hover { color: var(--danger); }
+
+/* ── BACKUP PAGE ──────────────────────────────── */
+.backup-stat { text-align: center; }
+.backup-stat-value {
+  font-size: 36px; font-weight: 800; line-height: 1;
+}
+.backup-stat-label {
+  font-size: 12px; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: .5px;
+  font-weight: 600; margin-top: 4px;
+}
+.backup-hint {
+  font-size: 12px; color: var(--text-tertiary);
+  background: var(--bg-hover); border-radius: var(--radius-sm);
+  padding: 10px 12px; line-height: 1.5;
+}
+.backup-hint code {
+  font-size: 11px; display: block; margin-top: 4px;
+}
+.backup-tips {
+  list-style: none; padding: 0; margin: 0;
+  font-size: 13px; color: var(--text-secondary);
+}
+.backup-tips li { margin-bottom: 8px; }
+.alert-empty {
+  text-align: center; color: var(--text-tertiary);
+  padding: 20px 0; font-size: 13px;
+}
+.archivo-mini {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 4px;
+}

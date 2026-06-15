@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Respaldo de Archivos — Seguimiento SD{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Respaldo de Archivos</h2>
+    <p class="page-sub">Descarga una copia de todos los documentos adjuntos en la herramienta</p>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- Resumen + Acción -->
+  <div class="col-lg-4">
+    <div class="section-card mb-4">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-archive me-2"></i>Resumen</h5>
+      </div>
+      <div class="p-4">
+        <div class="backup-stat">
+          <div class="backup-stat-value" style="color:var(--turquesa)">{{ stats.total_archivos }}</div>
+          <div class="backup-stat-label">Archivos totales</div>
+        </div>
+        <div class="backup-stat mt-3">
+          <div class="backup-stat-value" style="color:var(--verde)">{{ stats.total_size_mb }} MB</div>
+          <div class="backup-stat-label">Tamaño total</div>
+        </div>
+        <div class="backup-stat mt-3">
+          <div class="backup-stat-value" style="color:var(--warning)">{{ stats.solicitudes|length }}</div>
+          <div class="backup-stat-label">Solicitudes con archivos</div>
+        </div>
+
+        <hr class="my-4">
+
+        {% if stats.total_archivos > 0 %}
+        <a href="{{ url_for('descargar_backup') }}"
+           class="btn btn-primary w-100 mb-3">
+          <i class="bi bi-download me-2"></i>Descargar backup completo
+        </a>
+        <div class="backup-hint">
+          <i class="bi bi-info-circle me-1"></i>
+          Se descarga un ZIP con la estructura:
+          <code>SOL-XXXX/comercial/</code> y
+          <code>SOL-XXXX/soluciones/</code>
+        </div>
+        {% else %}
+        <div class="alert-empty">
+          <i class="bi bi-folder2-open fs-2 d-block mb-2 opacity-25"></i>
+          No hay archivos adjuntos en la herramienta aún.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section-card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-shield-check me-1" style="color:var(--turquesa)"></i>¿Cuándo hacer backup?</h6>
+      <ul class="backup-tips">
+        <li><i class="bi bi-check2 text-success me-1"></i>Antes de subir una nueva versión del código</li>
+        <li><i class="bi bi-check2 text-success me-1"></i>Periódicamente (semanal o mensual)</li>
+        <li><i class="bi bi-check2 text-success me-1"></i>Antes de eliminar solicitudes</li>
+        <li><i class="bi bi-check2 text-success me-1"></i>Cuando un usuario reporte que perdió un archivo</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Detalle por solicitud -->
+  <div class="col-lg-8">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h5 class="mb-0"><i class="bi bi-folder2 me-2"></i>Detalle por solicitud</h5>
+        <span class="text-muted small">{{ stats.total_archivos }} archivo{% if stats.total_archivos != 1 %}s{% endif %}</span>
+      </div>
+
+      {% if stats.solicitudes %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Comerciales</th>
+              <th>Soluciones</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sol in stats.solicitudes %}
+            {% set com = sol.archivos | selectattr('tipo','eq','comercial') | list %}
+            {% set sol_docs = sol.archivos | selectattr('tipo','eq','soluciones') | list %}
+            <tr>
+              <td><span class="folio-badge">{{ sol.folio }}</span></td>
+              <td>
+                {% if com %}
+                  {% for a in com %}
+                  <div class="archivo-mini">
+                    <span class="file-icon ext-{{ a.nombre.rsplit('.',1)[1].lower() if '.' in a.nombre else 'bin' }}" style="width:24px;height:24px;font-size:7px">
+                      {{ a.nombre.rsplit('.',1)[1].upper() if '.' in a.nombre else '?' }}
+                    </span>
+                    <span class="text-truncate" style="max-width:160px;font-size:12px">{{ a.nombre }}</span>
+                    <span class="text-muted" style="font-size:11px">{{ (a.size/1024)|round(0)|int }}KB</span>
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if sol_docs %}
+                  {% for a in sol_docs %}
+                  <div class="archivo-mini">
+                    <span class="file-icon ext-{{ a.nombre.rsplit('.',1)[1].lower() if '.' in a.nombre else 'bin' }}" style="width:24px;height:24px;font-size:7px">
+                      {{ a.nombre.rsplit('.',1)[1].upper() if '.' in a.nombre else '?' }}
+                    </span>
+                    <span class="text-truncate" style="max-width:160px;font-size:12px">{{ a.nombre }}</span>
+                    <span class="text-muted" style="font-size:11px">{{ (a.size/1024)|round(0)|int }}KB</span>
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="version-badge">{{ sol.count }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-folder2-open fs-1 d-block mb-2 opacity-25"></i>
+        No hay archivos adjuntos en ninguna solicitud.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -36,6 +36,9 @@
       <a href="{{ url_for('admin_temas') }}" class="nav-item {% if request.endpoint == 'admin_temas' %}active{% endif %}">
         <i class="bi bi-tags"></i><span>Temas</span>
       </a>
+      <a href="{{ url_for('backup_uploads') }}" class="nav-item {% if request.endpoint == 'backup_uploads' %}active{% endif %}">
+        <i class="bi bi-archive"></i><span>Respaldo Archivos</span>
+      </a>
       {% endif %}
       {% endif %}
     </nav>
