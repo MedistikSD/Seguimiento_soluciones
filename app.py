@@ -13,7 +13,11 @@ from flask import Response
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'soluciones-logisticas-secret-2026')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
+# Render usa 'postgres://' pero SQLAlchemy requiere 'postgresql://'
+_db_url = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
+if _db_url.startswith('postgres://'):
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 UPLOAD_BASE = os.path.join(os.path.dirname(__file__), 'uploads')
