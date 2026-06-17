@@ -1189,19 +1189,6 @@ def migrar_columnas():
     return redirect(url_for("dashboard"))
 
 
-@app.route('/admin/debug-estatus')
-@login_required
-@rol_requerido('administrador')
-def debug_estatus():
-    todas = Solicitud.query.all()
-    resultado = {}
-    for s in todas:
-        resultado[s.folio] = s.estatus
-    estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
-                    'Información Completa','Propuesta Enviada','Cerrada']
-    por_estatus = {e: len([s for s in todas if s.estatus == e]) for e in estatus_list}
-    return jsonify({'solicitudes': resultado, 'por_estatus': por_estatus, 'total': len(todas)})
-
 # ── Init DB ───────────────────────────────────────────────────────────────────
 def init_db():
     db.create_all()
