@@ -45,13 +45,24 @@
             <input type="text" name="cliente" class="form-control" placeholder="Nombre del cliente" required>
           </div>
 
-          <div class="col-12">
+          <div class="col-md-6">
             <label class="form-label required">Tipo de solicitud</label>
-            <select name="tema" class="form-select" required>
+            <select name="tema" class="form-select" required id="selectTema">
               <option value="">— Selecciona una opción —</option>
               {% for t in temas %}
               <option value="{{ t.nombre }}">{{ t.nombre }}</option>
               {% endfor %}
+            </select>
+          </div>
+
+          <!-- Subtipo: aparece solo si el tema incluye transporte o almacenaje -->
+          <div class="col-md-6" id="divSubtipo" style="display:none;">
+            <label class="form-label required" id="labelSubtipo">Subtipo</label>
+            <select name="subtipo" class="form-select" id="selectSubtipo">
+              <option value="">— Selecciona —</option>
+              <option value="RFQ">RFQ — Request for Quotation</option>
+              <option value="RFI">RFI — Request for Information</option>
+              <option value="RFP">RFP — Request for Proposal</option>
             </select>
           </div>
 
@@ -62,7 +73,10 @@
           </div>
 
           <div class="col-md-6">
-            <label class="form-label">Monto aproximado de oportunidad (MXN) <span class="text-muted fw-normal">mensual</span></label>
+            <label class="form-label">
+              Monto aproximado de oportunidad (MXN)
+              <span class="text-muted fw-normal">mensual</span>
+            </label>
             <div class="input-group">
               <span class="input-group-text">$</span>
               <input type="number" name="monto_oportunidad" class="form-control"
@@ -71,15 +85,19 @@
           </div>
 
           <div class="col-md-6">
-            <div class="prioridad-info-box">
-              <i class="bi bi-info-circle me-2" style="color:var(--turquesa)"></i>
-              <span>La prioridad la asigna el <strong>Líder</strong> después de crear la solicitud.</span>
+            <label class="form-label">
+              Prioridad sugerida
+              <span class="text-muted fw-normal small">(tú propones, el líder confirma)</span>
+            </label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-sort-numeric-up"></i></span>
+              <input type="number" name="prioridad_sugerida" class="form-control"
+                     min="1" step="1" placeholder="Ej. 1, 2, 3…">
             </div>
+            <div class="form-text">Número de orden de urgencia. El Líder Comercial la confirma.</div>
           </div>
 
-          <!-- Ingeniero se asigna desde el detalle por el Líder de Soluciones -->
-
-          <!-- Archivos adjuntos iniciales -->
+          <!-- Archivos adjuntos -->
           <div class="col-12">
             <label class="form-label">
               <i class="bi bi-paperclip me-1"></i>Archivos adjuntos
@@ -99,6 +117,14 @@
         </div>
 
         <hr class="my-4">
+
+        <!-- Info auto-asignación -->
+        <div class="alert" style="background:rgba(75,184,200,.08);border:1px solid rgba(75,184,200,.2);font-size:13px;">
+          <i class="bi bi-robot me-2" style="color:var(--turquesa)"></i>
+          El ingeniero se asignará <strong>automáticamente</strong> al que tenga menor carga de proyectos activos.
+          El Líder de Soluciones puede reasignarlo manualmente desde el detalle.
+        </div>
+
         <div class="d-flex justify-content-end gap-2">
           <a href="{{ url_for('solicitudes') }}" class="btn btn-outline-secondary">Cancelar</a>
           <button type="submit" class="btn btn-primary px-4">
@@ -113,12 +139,21 @@
     <div class="section-card p-4">
       <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-1"></i>¿Cómo funciona?</h6>
       <div class="timeline-mini">
-        <div class="tm-step"><span class="tm-num">1</span><span>El comercial crea la solicitud con datos del cliente.</span></div>
-        <div class="tm-step"><span class="tm-num">2</span><span>Se genera un folio único automáticamente.</span></div>
-        <div class="tm-step"><span class="tm-num">3</span><span>El Líder de Soluciones o Admin asigna al ingeniero.</span></div>
-        <div class="tm-step"><span class="tm-num">4</span><span>El ingeniero analiza y documenta.</span></div>
-        <div class="tm-step"><span class="tm-num">5</span><span>Se entrega propuesta al cliente por correo.</span></div>
-        <div class="tm-step"><span class="tm-num">6</span><span>El líder cierra la solicitud.</span></div>
+        <div class="tm-step"><span class="tm-num">1</span><span>Comercial crea la solicitud y sugiere prioridad.</span></div>
+        <div class="tm-step"><span class="tm-num">2</span><span>Se asigna automáticamente al ingeniero con menor carga.</span></div>
+        <div class="tm-step"><span class="tm-num">3</span><span>Líder Comercial confirma la prioridad.</span></div>
+        <div class="tm-step"><span class="tm-num">4</span><span>Líder de Soluciones hace confirmación final de prioridad.</span></div>
+        <div class="tm-step"><span class="tm-num">5</span><span>El ingeniero analiza y documenta.</span></div>
+        <div class="tm-step"><span class="tm-num">6</span><span>Se entrega propuesta al cliente.</span></div>
+      </div>
+    </div>
+
+    <div class="section-card p-4 mt-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-question-circle me-1"></i>¿Qué es RFQ / RFI / RFP?</h6>
+      <div style="font-size:12px;color:var(--text-secondary)">
+        <div class="mb-2"><strong style="color:var(--turquesa)">RFQ</strong> — Request for Quotation<br>Solicitud de cotización específica con precios.</div>
+        <div class="mb-2"><strong style="color:var(--verde)">RFI</strong> — Request for Information<br>Solicitud de información general del proveedor.</div>
+        <div><strong style="color:var(--warning)">RFP</strong> — Request for Proposal<br>Solicitud de propuesta completa con solución.</div>
       </div>
     </div>
   </div>
@@ -133,13 +168,26 @@ const inputFecha = document.getElementById('fechaSolicitud');
 inputFecha.min = hoy;
 inputFecha.value = hoy;
 
-// ── Drag & Drop ────────────────────────────────
+// Mostrar/ocultar subtipo según el tema
+const selectTema   = document.getElementById('selectTema');
+const divSubtipo   = document.getElementById('divSubtipo');
+const selectSubtipo = document.getElementById('selectSubtipo');
+
+function evaluarSubtipo() {
+  const tema = selectTema.value.toLowerCase();
+  const necesita = tema.includes('transporte') || tema.includes('almacenaje');
+  divSubtipo.style.display = necesita ? 'block' : 'none';
+  selectSubtipo.required = necesita;
+  if (!necesita) selectSubtipo.value = '';
+}
+selectTema.addEventListener('change', evaluarSubtipo);
+
+// Drag & Drop
 const dz    = document.getElementById('dropzone');
 const input = document.getElementById('archivoInput');
 let   archivosActuales = [];
 
 function mostrarArchivos(files) {
-  // Merge con lista existente (sin duplicados por nombre)
   const nuevos = [...files];
   nuevos.forEach(f => {
     if (!archivosActuales.find(a => a.name === f.name)) archivosActuales.push(f);
@@ -167,22 +215,15 @@ function quitarArchivo(idx) {
 }
 
 function sincronizarInput() {
-  // Rebuild DataTransfer to set files on input
   const dt = new DataTransfer();
   archivosActuales.forEach(f => dt.items.add(f));
   input.files = dt.files;
 }
 
-dz.addEventListener('dragover', e => {
-  e.preventDefault();
-  dz.classList.add('dragover');
-});
-dz.addEventListener('dragleave', e => {
-  if (!dz.contains(e.relatedTarget)) dz.classList.remove('dragover');
-});
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', e => { if (!dz.contains(e.relatedTarget)) dz.classList.remove('dragover'); });
 dz.addEventListener('drop', e => {
-  e.preventDefault();
-  dz.classList.remove('dragover');
+  e.preventDefault(); dz.classList.remove('dragover');
   mostrarArchivos(e.dataTransfer.files);
 });
 </script>

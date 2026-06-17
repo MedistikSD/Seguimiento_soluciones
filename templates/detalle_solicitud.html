@@ -79,7 +79,11 @@
           <div class="col-sm-6"><div class="info-item"><span class="info-label">Ingeniero Responsable</span>
             <span>{{ sol.responsable.nombre if sol.responsable else '<span class="text-muted">Sin asignar</span>'|safe }}</span>
           </div></div>
-          <div class="col-12"><div class="info-item"><span class="info-label">Tema</span><span>{{ sol.tema }}</span></div></div>
+          <div class="col-12"><div class="info-item"><span class="info-label">Tema</span>
+            <span>{{ sol.tema }}
+              {% if sol.subtipo %}<span class="subtipo-badge ms-2">{{ sol.subtipo }}</span>{% endif %}
+            </span>
+          </div></div>
           {% if sol.monto_oportunidad %}
           <div class="col-sm-6"><div class="info-item"><span class="info-label">Monto potencial</span>
             <span class="fw-bold text-success">${{ "{:,.0f}".format(sol.monto_oportunidad) }} MXN</span>
@@ -238,19 +242,71 @@
             <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
           </div>
         </form>
-        <!-- Asignar prioridad numérica -->
-        <form method="POST" action="{{ url_for('actualizar_prioridad', folio=sol.folio) }}" class="mb-3">
-          <label class="form-label fw-semibold">Prioridad del comercial</label>
-          <div class="input-group">
-            <span class="input-group-text"><i class="bi bi-sort-numeric-up"></i></span>
-            <input type="number" name="prioridad" class="form-control form-control-sm"
-                   min="1" step="1"
-                   value="{{ sol.prioridad if sol.prioridad else '' }}"
-                   placeholder="Ej. 1, 2, 3…">
-            <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
+        <!-- Flujo de prioridad 3 pasos -->
+        <div class="prio-flow mb-3">
+          <div class="prio-flow-title"><i class="bi bi-sort-numeric-up me-1"></i>Flujo de Prioridad</div>
+
+          <!-- Paso 1: Comercial sugiere -->
+          <div class="prio-step {% if sol.prioridad_sugerida %}done{% endif %}">
+            <div class="prio-step-header">
+              <span class="prio-step-num">1</span>
+              <span>Sugerida por Comercial</span>
+              {% if sol.prioridad_sugerida %}<span class="prioridad-num-badge ms-auto">#{{ sol.prioridad_sugerida }}</span>{% endif %}
+            </div>
+            {% if current_user.rol in ('comercial','aux_comercial','lider_comercial','administrador') %}
+            <form method="POST" action="{{ url_for('actualizar_prioridad', folio=sol.folio) }}" class="mt-2">
+              <input type="hidden" name="paso" value="sugerir">
+              <div class="input-group input-group-sm">
+                <input type="number" name="prioridad" class="form-control" min="1"
+                       value="{{ sol.prioridad_sugerida or '' }}" placeholder="#">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Actualizar</button>
+              </div>
+            </form>
+            {% endif %}
           </div>
-          <div class="form-text">Número de orden para el comercial (1 = más urgente).</div>
-        </form>
+
+          <!-- Paso 2: Líder Comercial confirma -->
+          <div class="prio-step {% if sol.prioridad_comercial %}done{% elif not sol.prioridad_sugerida %}locked{% endif %}">
+            <div class="prio-step-header">
+              <span class="prio-step-num">2</span>
+              <span>Confirmada por Líder Comercial</span>
+              {% if sol.prioridad_comercial %}<span class="prioridad-num-badge ms-auto">#{{ sol.prioridad_comercial }}</span>{% endif %}
+            </div>
+            {% if current_user.rol in ('lider_comercial','administrador') and sol.prioridad_sugerida %}
+            <form method="POST" action="{{ url_for('actualizar_prioridad', folio=sol.folio) }}" class="mt-2">
+              <input type="hidden" name="paso" value="confirmar_com">
+              <div class="input-group input-group-sm">
+                <input type="number" name="prioridad" class="form-control" min="1"
+                       value="{{ sol.prioridad_comercial or sol.prioridad_sugerida or '' }}" placeholder="#">
+                <button type="submit" class="btn btn-sm btn-outline-turquesa">Confirmar</button>
+              </div>
+            </form>
+            {% elif not sol.prioridad_sugerida %}
+            <div class="prio-waiting">Esperando sugerencia del comercial</div>
+            {% endif %}
+          </div>
+
+          <!-- Paso 3: Líder Soluciones confirma final -->
+          <div class="prio-step {% if sol.prioridad %}done{% elif not sol.prioridad_comercial %}locked{% endif %}">
+            <div class="prio-step-header">
+              <span class="prio-step-num">3</span>
+              <span>Confirmación Final (Líder Sol.)</span>
+              {% if sol.prioridad %}<span class="prioridad-num-badge ms-auto">#{{ sol.prioridad }}</span>{% endif %}
+            </div>
+            {% if current_user.rol in ('lider_soluciones','administrador') and sol.prioridad_comercial %}
+            <form method="POST" action="{{ url_for('actualizar_prioridad', folio=sol.folio) }}" class="mt-2">
+              <input type="hidden" name="paso" value="confirmar_sol">
+              <div class="input-group input-group-sm">
+                <input type="number" name="prioridad" class="form-control" min="1"
+                       value="{{ sol.prioridad or sol.prioridad_comercial or '' }}" placeholder="#">
+                <button type="submit" class="btn btn-sm btn-primary">Confirmar Final</button>
+              </div>
+            </form>
+            {% elif not sol.prioridad_comercial %}
+            <div class="prio-waiting">Esperando confirmación del Líder Comercial</div>
+            {% endif %}
+          </div>
+        </div>
 
         {% if sol.estatus != 'Cerrada' %}
         <form method="POST" action="{{ url_for('cerrar_solicitud', folio=sol.folio) }}"

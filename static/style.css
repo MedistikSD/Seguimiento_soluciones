@@ -835,3 +835,33 @@ hr { border-color: var(--bg-border); opacity: 1; }
   display: flex; align-items: center; gap: 6px;
   margin-bottom: 4px;
 }
+
+/* ── SUBTIPO BADGE ────────────────────────────── */
+.subtipo-badge {
+  background: rgba(245,158,11,.15); color: var(--warning);
+  border: 1px solid rgba(245,158,11,.3);
+  padding: 1px 7px; border-radius: 4px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .3px;
+}
+
+/* ── FLUJO DE PRIORIDAD 3 PASOS ──────────────── */
+.prio-flow { background: var(--bg-surface); border: 1px solid var(--bg-border); border-radius: var(--radius); overflow: hidden; }
+.prio-flow-title { padding: 10px 14px; font-weight: 700; font-size: 13px; color: var(--text-primary); border-bottom: 1px solid var(--bg-border); }
+.prio-step { padding: 12px 14px; border-bottom: 1px solid var(--bg-border); transition: background var(--transition); }
+.prio-step:last-child { border-bottom: none; }
+.prio-step.done { background: rgba(174,202,0,.05); }
+.prio-step.locked { opacity: .5; pointer-events: none; }
+.prio-step-header { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+.prio-step-num {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--bg-hover); color: var(--text-tertiary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; flex-shrink: 0;
+}
+.prio-step.done .prio-step-num { background: var(--verde-dark); color: var(--bg-base); }
+.prio-waiting { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; font-style: italic; }
+.btn-outline-turquesa {
+  border-color: var(--turquesa) !important; color: var(--turquesa) !important; background: transparent !important;
+}
+.btn-outline-turquesa:hover { background: rgba(75,184,200,.15) !important; }

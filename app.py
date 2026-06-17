@@ -106,6 +106,21 @@ def registrar_bitacora(solicitud_id, accion, usuario_id=None):
 def get_temas():
     return TemasSolicitud.query.filter_by(activo=True).order_by(TemasSolicitud.orden, TemasSolicitud.nombre).all()
 
+def asignar_ingeniero_automatico():
+    """Asigna al ingeniero con menor número de solicitudes activas."""
+    ingenieros = User.query.filter_by(rol='ingeniero', activo=True).all()
+    if not ingenieros:
+        return None
+    cargas = []
+    for ing in ingenieros:
+        activas = Solicitud.query.filter_by(
+            responsable_id=ing.id
+        ).filter(Solicitud.estatus != 'Cerrada').count()
+        cargas.append((ing.id, activas))
+    # Ordenar por menor carga, en caso de empate tomar el primero
+    cargas.sort(key=lambda x: x[1])
+    return cargas[0][0]
+
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 @app.route('/', methods=['GET', 'POST'])
@@ -205,8 +220,8 @@ def dashboard():
 
     estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
                     'Información Completa','Propuesta Enviada','Cerrada']
-    por_estatus = {e: len([s for s in todas if s.estatus == e])
-                   for e in estatus_list if any(s.estatus == e for s in todas)}
+    # Mostrar TODOS los estatus siempre (con 0 si no hay solicitudes)
+    por_estatus = {e: len([s for s in todas if s.estatus == e]) for e in estatus_list}
 
     ultimas = sorted(todas, key=lambda s: s.ultima_actualizacion or s.fecha_captura, reverse=True)[:5]
     comerciales_list = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial'])).all()
@@ -288,8 +303,21 @@ def nueva_solicitud():
             return render_template('nueva_solicitud.html', ingenieros=ingenieros,
                                    comerciales=comerciales, temas=temas)
 
-        # El ingeniero siempre se asigna después desde el detalle (solo lider_soluciones)
-        responsable_id = None
+        # Subtipo (solo si tema incluye transporte/almacenaje)
+        tema_val = f['tema'].strip().lower()
+        subtipo  = f.get('subtipo','').strip() or None
+        if not any(p in tema_val for p in ['transporte','almacenaje']):
+            subtipo = None
+
+        # Auto-asignación por menor carga de trabajo
+        responsable_id = asignar_ingeniero_automatico()
+
+        # Prioridad sugerida por comercial
+        prio_sug = f.get('prioridad_sugerida','').strip()
+        try:
+            prio_sug = int(prio_sug) if prio_sug else None
+        except ValueError:
+            prio_sug = None
 
         sol = Solicitud(
             folio=generar_folio(),
@@ -298,9 +326,13 @@ def nueva_solicitud():
             fecha_solicitud=fecha_sol,
             cliente=f['cliente'].strip(),
             tema=f['tema'].strip(),
+            subtipo=subtipo,
             comentarios_comerciales=f.get('comentarios_comerciales','').strip(),
             monto_oportunidad=float(f['monto_oportunidad']) if f.get('monto_oportunidad') else None,
-            prioridad=None,  # Asignada por líder después
+            prioridad_sugerida=prio_sug,
+            prioridad_comercial=None,
+            prioridad=None,
+            prioridad_estado='pendiente',
             estatus='Asignada' if responsable_id else 'Capturada',
         )
         db.session.add(sol)
@@ -771,10 +803,12 @@ def descargar_documento(folio, doc_id):
 
 @app.route('/solicitudes/<folio>/prioridad', methods=['POST'])
 @login_required
-@rol_requerido('lider_comercial','lider_soluciones','administrador')
+@rol_requerido('comercial','lider_comercial','lider_soluciones','administrador','aux_comercial')
 def actualizar_prioridad(folio):
-    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+    sol  = Solicitud.query.filter_by(folio=folio).first_or_404()
+    paso = request.form.get('paso','')  # sugerir | confirmar_com | confirmar_sol
     valor = request.form.get('prioridad','').strip()
+
     try:
         num = int(valor) if valor else None
         if num is not None and num < 1:
@@ -783,12 +817,29 @@ def actualizar_prioridad(folio):
         flash('La prioridad debe ser un número mayor a 0.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio))
 
-    sol.prioridad = num
+    if paso == 'sugerir' and current_user.rol in ('comercial','aux_comercial','lider_comercial','administrador'):
+        sol.prioridad_sugerida = num
+        sol.prioridad_estado   = 'pendiente'
+        registrar_bitacora(sol.id, f'{current_user.nombre} sugirió prioridad #{num}.')
+        flash(f'Prioridad sugerida #{num}. Pendiente de confirmación por Líder Comercial.', 'success')
+
+    elif paso == 'confirmar_com' and current_user.rol in ('lider_comercial','administrador'):
+        sol.prioridad_comercial = num
+        sol.prioridad_estado    = 'confirmada_com'
+        registrar_bitacora(sol.id, f'{current_user.nombre} confirmó prioridad comercial #{num}.')
+        flash(f'Prioridad comercial confirmada #{num}. Pendiente de confirmación por Líder de Soluciones.', 'success')
+
+    elif paso == 'confirmar_sol' and current_user.rol in ('lider_soluciones','administrador'):
+        sol.prioridad       = num
+        sol.prioridad_estado = 'confirmada'
+        registrar_bitacora(sol.id, f'{current_user.nombre} confirmó prioridad final #{num}.')
+        flash(f'Prioridad final confirmada #{num}.', 'success')
+    else:
+        flash('No tienes permiso para este paso de prioridad.', 'danger')
+        return redirect(url_for('detalle_solicitud', folio=folio))
+
     sol.ultima_actualizacion = cdmx_now()
-    label = f'#{num}' if num else 'sin prioridad'
-    registrar_bitacora(sol.id, f'{current_user.nombre} asignó prioridad {label}.')
     db.session.commit()
-    flash(f'Prioridad actualizada a {label}.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio))
 
 # ── Acciones en lote ──────────────────────────────────────────────────────────

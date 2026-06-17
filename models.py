@@ -49,7 +49,13 @@ class Solicitud(db.Model):
     tema          = db.Column(db.String(300), nullable=False)
     comentarios_comerciales = db.Column(db.Text, nullable=True)
     monto_oportunidad = db.Column(db.Float, nullable=True)
-    prioridad     = db.Column(db.Integer, nullable=True)  # Número de orden asignado por líder (1 = más urgente)
+    subtipo       = db.Column(db.String(10), nullable=True)   # RFQ, RFI, RFP (solo si tema incluye transporte/almacenaje)
+
+    # Flujo de prioridad en 3 pasos
+    prioridad_sugerida   = db.Column(db.Integer, nullable=True)  # Propuesta por comercial
+    prioridad_comercial  = db.Column(db.Integer, nullable=True)  # Confirmada por lider_comercial
+    prioridad            = db.Column(db.Integer, nullable=True)  # Confirmada final por lider_soluciones
+    prioridad_estado     = db.Column(db.String(20), default='pendiente')  # pendiente|confirmada_com|confirmada
     estatus       = db.Column(db.String(40), nullable=False, default='Capturada')
     ultima_actualizacion = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
