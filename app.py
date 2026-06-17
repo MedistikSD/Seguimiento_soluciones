@@ -1154,6 +1154,25 @@ def descargar_backup():
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
 
+
+# ── Migración temporal — ELIMINAR después de correr una vez ──────────────────
+@app.route('/admin/migrar-columnas')
+@login_required
+@rol_requerido('administrador')
+def migrar_columnas():
+    try:
+        with db.engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS subtipo VARCHAR(10)"))
+            conn.execute(text("ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_sugerida INTEGER"))
+            conn.execute(text("ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_comercial INTEGER"))
+            conn.execute(text("ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_estado VARCHAR(20) DEFAULT 'pendiente'"))
+            conn.commit()
+        flash("✅ Migración completada. Ya puedes eliminar esta ruta del código.", "success")
+    except Exception as e:
+        flash(f"Error en migración: {str(e)}", "danger")
+    return redirect(url_for("dashboard"))
+
 # ── Init DB ───────────────────────────────────────────────────────────────────
 def init_db():
     db.create_all()
