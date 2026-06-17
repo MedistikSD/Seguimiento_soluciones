@@ -192,13 +192,7 @@ def recuperar_password():
 @login_required
 def dashboard():
     q = Solicitud.query
-
-    # administrador y lider_soluciones ven TODAS sin restricción
-    if current_user.rol in ('lider_comercial', 'aux_comercial'):
-        ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
-        ids.append(current_user.id)
-        q = q.filter(Solicitud.hunter_id.in_(ids))
-    # lider_soluciones e ingeniero tienen su propio scope en lógica de charts
+    # Todos los roles ven TODAS las solicitudes en el dashboard
 
     # Filtros dashboard
     f_estatus  = request.args.get('f_estatus', '').strip()
