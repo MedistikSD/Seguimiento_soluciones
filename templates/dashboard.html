@@ -192,17 +192,30 @@ function fmtMXN(val) {
 }
 
 {% if por_estatus %}
+// Filtrar estatus con 0 solo para la visualización del donut
+const estatusRaw    = {{ por_estatus.keys()|list|tojson }};
+const cantidadRaw   = {{ por_estatus.values()|list|tojson }};
+const estatusLabels = [];
+const estatusDatos  = [];
+const estatusColors = [];
+estatusRaw.forEach((label, i) => {
+  if (cantidadRaw[i] > 0) {
+    estatusLabels.push(label);
+    estatusDatos.push(cantidadRaw[i]);
+    estatusColors.push(COLORS[i % COLORS.length]);
+  }
+});
+
 new Chart(document.getElementById('chartEstatus'), {
   type: 'doughnut',
   data: {
-    labels: {{ por_estatus.keys()|list|tojson }},
-    datasets: [{ data: {{ por_estatus.values()|list|tojson }},
-      backgroundColor: COLORS, borderWidth: 2, borderColor: '#1A1F27' }]
+    labels: estatusLabels,
+    datasets: [{ data: estatusDatos,
+      backgroundColor: estatusColors, borderWidth: 2, borderColor: '#1A1F27' }]
   },
   options: { responsive:true, maintainAspectRatio:false,
     plugins: {
-      legend: { position:'bottom', labels:{ padding:10, font:{size:11},
-        filter: item => item.index !== undefined } },
+      legend: { position:'bottom', labels:{ padding:10, font:{size:11} } },
       tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } }
     }
   }
