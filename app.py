@@ -28,6 +28,25 @@ ALLOWED_EXTENSIONS = {'pdf','xlsx','xls','pptx','docx','png','jpg','jpeg','zip'}
 db.init_app(app)
 
 with app.app_context():
+    # Migración automática — agrega columnas nuevas si no existen
+    # Seguro de correr múltiples veces gracias a IF NOT EXISTS
+    try:
+        with db.engine.connect() as conn:
+            from sqlalchemy import text
+            migraciones = [
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS subtipo VARCHAR(10)",
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_sugerida INTEGER",
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_comercial INTEGER",
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_estado VARCHAR(20) DEFAULT 'pendiente'",
+            ]
+            for sql in migraciones:
+                try:
+                    conn.execute(text(sql))
+                except Exception:
+                    pass  # Columna ya existe o tabla no existe aún
+            conn.commit()
+    except Exception as e:
+        print(f"Migración omitida (primera vez o SQLite): {e}")
     db.create_all()
 
 login_manager = LoginManager(app)
