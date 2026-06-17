@@ -212,14 +212,21 @@ def dashboard():
     tiempos = [s.dias_desde_captura() for s in cerradas]
     promedio_atencion = round(sum(tiempos)/len(tiempos), 1) if tiempos else 0
 
-    # Gráficas: calculadas desde `todas` para respetar todos los filtros activos
+    estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
+                    'Información Completa','Propuesta Enviada','Cerrada']
+
+    # Donut: SIEMPRE todas las solicitudes sin filtro para mostrar estado real del área
+    todas_sin_filtro = Solicitud.query.all()
+    por_estatus = {e: len([s for s in todas_sin_filtro if s.estatus == e]) for e in estatus_list}
+
+    # Gráficas de monto: respetan los filtros activos
     por_comercial_monto = {}
     por_ingeniero_monto = {}
     if es_lider():
         from collections import defaultdict
         com_montos = defaultdict(float)
         ing_montos = defaultdict(float)
-        for s in todas:
+        for s in todas_sin_filtro:
             if s.estatus != 'Cerrada':
                 monto = s.monto_oportunidad or 0
                 if s.hunter:
@@ -230,11 +237,6 @@ def dashboard():
             sorted(com_montos.items(), key=lambda x: x[1], reverse=True) if v}
         por_ingeniero_monto = {k: round(v) for k, v in
             sorted(ing_montos.items(), key=lambda x: x[1], reverse=True) if v}
-
-    estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
-                    'Información Completa','Propuesta Enviada','Cerrada']
-    # Mostrar TODOS los estatus siempre (con 0 si no hay solicitudes)
-    por_estatus = {e: len([s for s in todas if s.estatus == e]) for e in estatus_list}
 
     ultimas = sorted(todas, key=lambda s: s.ultima_actualizacion or s.fecha_captura, reverse=True)[:5]
     comerciales_list = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial'])).all()
