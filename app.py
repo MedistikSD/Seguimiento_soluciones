@@ -204,9 +204,11 @@ def dashboard():
     if f_tema:      q = q.filter(Solicitud.tema == f_tema)
 
     todas = q.all()
-    abiertas  = [s for s in todas if s.estatus not in ('Cerrada','Propuesta Enviada')]
-    cerradas  = [s for s in todas if s.estatus == 'Cerrada']
-    vencidas  = [s for s in todas if s.dias_sin_movimiento() > 15 and s.estatus != 'Cerrada']
+    # Propuesta Enviada se trata como cerrada
+    ESTATUS_CERRADO = ('Cerrada', 'Propuesta Enviada')
+    abiertas    = [s for s in todas if s.estatus not in ESTATUS_CERRADO]
+    cerradas    = [s for s in todas if s.estatus in ESTATUS_CERRADO]
+    vencidas    = [s for s in todas if s.dias_sin_movimiento() > 15 and s.estatus not in ESTATUS_CERRADO]
     monto_total = sum(s.monto_oportunidad or 0 for s in todas)
 
     tiempos = [s.dias_desde_captura() for s in cerradas]
@@ -215,19 +217,17 @@ def dashboard():
     estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
                     'Información Completa','Propuesta Enviada','Cerrada']
 
-    # Donut: SIEMPRE todas las solicitudes sin filtro para mostrar estado real del área
-    todas_sin_filtro = Solicitud.query.all()
-    por_estatus = {e: len([s for s in todas_sin_filtro if s.estatus == e]) for e in estatus_list}
+    # Donut y gráficas respetan los filtros activos
+    por_estatus = {e: len([s for s in todas if s.estatus == e]) for e in estatus_list}
 
-    # Gráficas de monto: respetan los filtros activos
     por_comercial_monto = {}
     por_ingeniero_monto = {}
     if es_lider():
         from collections import defaultdict
         com_montos = defaultdict(float)
         ing_montos = defaultdict(float)
-        for s in todas_sin_filtro:
-            if s.estatus != 'Cerrada':
+        for s in todas:
+            if s.estatus not in ESTATUS_CERRADO:
                 monto = s.monto_oportunidad or 0
                 if s.hunter:
                     com_montos[s.hunter.nombre] += monto
