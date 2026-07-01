@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from functools import wraps
-from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud, cdmx_now
+from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud, RutaTransporte, cdmx_now
 import os, uuid, csv, io, zipfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -38,6 +38,20 @@ with app.app_context():
                 "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_sugerida INTEGER",
                 "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_comercial INTEGER",
                 "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_estado VARCHAR(20) DEFAULT 'pendiente'",
+                """CREATE TABLE IF NOT EXISTS rutas_transporte (
+                    id SERIAL PRIMARY KEY,
+                    solicitud_id INTEGER REFERENCES solicitudes(id),
+                    orden INTEGER DEFAULT 1,
+                    origen VARCHAR(300) NOT NULL,
+                    destino VARCHAR(300) NOT NULL,
+                    tipo_servicio VARCHAR(20) NOT NULL,
+                    tipo_unidad VARCHAR(50),
+                    peso_aprox VARCHAR(50),
+                    temperatura VARCHAR(50),
+                    custodia VARCHAR(30),
+                    comentarios TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )""",
             ]
             for sql in migraciones:
                 try:
@@ -353,6 +367,37 @@ def nueva_solicitud():
         db.session.add(sol)
         db.session.flush()
         registrar_bitacora(sol.id, f'{current_user.nombre} creó la solicitud.')
+
+        # Rutas de transporte (solo si el tema incluye transporte)
+        tema_lower = sol.tema.lower()
+        es_transporte = 'transporte' in tema_lower
+        if es_transporte:
+            origenes      = request.form.getlist('ruta_origen[]')
+            destinos      = request.form.getlist('ruta_destino[]')
+            servicios     = request.form.getlist('ruta_tipo_servicio[]')
+            unidades      = request.form.getlist('ruta_tipo_unidad[]')
+            pesos         = request.form.getlist('ruta_peso[]')
+            temperaturas  = request.form.getlist('ruta_temperatura[]')
+            custodias     = request.form.getlist('ruta_custodia[]')
+            comentarios_r = request.form.getlist('ruta_comentarios[]')
+
+            for i, origen in enumerate(origenes):
+                if origen.strip() and i < len(destinos) and destinos[i].strip():
+                    ruta = RutaTransporte(
+                        solicitud_id=sol.id,
+                        orden=i+1,
+                        origen=origen.strip(),
+                        destino=destinos[i].strip(),
+                        tipo_servicio=servicios[i] if i < len(servicios) else 'FTL',
+                        tipo_unidad=unidades[i].strip() if i < len(unidades) else None,
+                        peso_aprox=pesos[i].strip() if i < len(pesos) else None,
+                        temperatura=temperaturas[i].strip() if i < len(temperaturas) else None,
+                        custodia=custodias[i].strip() if i < len(custodias) else None,
+                        comentarios=comentarios_r[i].strip() if i < len(comentarios_r) else None,
+                    )
+                    db.session.add(ruta)
+            if es_transporte and origenes:
+                registrar_bitacora(sol.id, f'{current_user.nombre} registró {len([o for o in origenes if o.strip()])} ruta(s) de transporte.')
 
         # Archivos adjuntos al crear (comercial)
         archivos = request.files.getlist('archivos_iniciales')
@@ -857,6 +902,51 @@ def actualizar_prioridad(folio):
     db.session.commit()
     return redirect(url_for('detalle_solicitud', folio=folio))
 
+
+@app.route('/solicitudes/<folio>/rutas/guardar', methods=['POST'])
+@login_required
+@rol_requerido('comercial','lider_comercial','aux_comercial','administrador')
+def guardar_rutas(folio):
+    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+
+    # Verificar permiso — solo el comercial dueño o líderes
+    if current_user.rol == 'comercial' and sol.hunter_id != current_user.id:
+        flash('Sin permiso para editar esta solicitud.', 'danger')
+        return redirect(url_for('detalle_solicitud', folio=folio))
+
+    # Eliminar rutas anteriores y reescribir
+    RutaTransporte.query.filter_by(solicitud_id=sol.id).delete()
+
+    origenes      = request.form.getlist('ruta_origen[]')
+    destinos      = request.form.getlist('ruta_destino[]')
+    servicios     = request.form.getlist('ruta_tipo_servicio[]')
+    unidades      = request.form.getlist('ruta_tipo_unidad[]')
+    pesos         = request.form.getlist('ruta_peso[]')
+    temperaturas  = request.form.getlist('ruta_temperatura[]')
+    custodias     = request.form.getlist('ruta_custodia[]')
+    comentarios_r = request.form.getlist('ruta_comentarios[]')
+
+    count = 0
+    for i, origen in enumerate(origenes):
+        if origen.strip() and i < len(destinos) and destinos[i].strip():
+            db.session.add(RutaTransporte(
+                solicitud_id=sol.id, orden=i+1,
+                origen=origen.strip(), destino=destinos[i].strip(),
+                tipo_servicio=servicios[i] if i < len(servicios) else 'FTL',
+                tipo_unidad=unidades[i].strip() if i < len(unidades) else None,
+                peso_aprox=pesos[i].strip() if i < len(pesos) else None,
+                temperatura=temperaturas[i].strip() if i < len(temperaturas) else None,
+                custodia=custodias[i].strip() if i < len(custodias) else None,
+                comentarios=comentarios_r[i].strip() if i < len(comentarios_r) else None,
+            ))
+            count += 1
+
+    sol.ultima_actualizacion = cdmx_now()
+    registrar_bitacora(sol.id, f'{current_user.nombre} actualizó las rutas de transporte ({count} rutas).')
+    db.session.commit()
+    flash(f'{count} ruta(s) de transporte guardadas correctamente.', 'success')
+    return redirect(url_for('detalle_solicitud', folio=folio) + '#tab-transporte')
+
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])
 @login_required
@@ -959,13 +1049,14 @@ def exportar_solicitudes():
     alt_fill = PatternFill("solid", fgColor="161B22")
 
     headers = [
-        "Folio", "Fecha Captura", "Fecha Solicitud", "Cliente", "Tipo",
+        "Folio", "Fecha Captura", "Fecha Solicitud", "Cliente", "Tipo", "Subtipo",
         "Comercial", "Ingeniero", "Prioridad", "Estatus",
         "Monto Oportunidad", "Días Captura", "Días Sin Mov.",
         "Fecha Compromiso", "Fecha Envío Cliente", "Fecha Cierre",
-        "Hist. Surtido", "Inventario", "Maestro Prod.", "Hist. Recepción", "Cuestionario Log."
+        "Hist. Surtido", "Inventario", "Maestro Prod.", "Hist. Recepción", "Cuestionario Log.",
+        "Rutas Transporte", "Orígenes", "Destinos", "Tipos Servicio", "Unidades", "Pesos", "Temperaturas", "Custodias"
     ]
-    col_widths = [16,16,16,28,22,22,22,10,24,18,12,12,16,18,14,14,12,14,15,16]
+    col_widths = [16,16,16,28,22,12,22,22,10,24,18,12,12,16,18,14,14,12,14,15,16,12,30,30,22,20,18,18,18]
 
     ws.row_dimensions[1].height = 30
     for col_num, (header, width) in enumerate(zip(headers, col_widths), 1):
@@ -979,15 +1070,17 @@ def exportar_solicitudes():
     for row_num, s in enumerate(solicitudes, 2):
         fill = alt_fill if row_num % 2 == 0 else PatternFill("solid", fgColor="1A1F27")
         font = Font(color="E2E8F0", size=10)
+        rutas = list(s.rutas) if 'transporte' in s.tema.lower() else []
         row_data = [
             s.folio,
             s.fecha_captura.strftime('%d/%m/%Y %H:%M') if s.fecha_captura else '',
             s.fecha_solicitud.strftime('%d/%m/%Y') if s.fecha_solicitud else '',
             s.cliente,
             s.tema,
+            s.subtipo or '',
             s.hunter.nombre if s.hunter else '',
             s.responsable.nombre if s.responsable else 'Sin asignar',
-            s.prioridad,
+            s.prioridad or '',
             s.estatus,
             s.monto_oportunidad or 0,
             s.dias_desde_captura(),
@@ -1000,6 +1093,14 @@ def exportar_solicitudes():
             'Sí' if s.maestro_productos else 'No',
             'Sí' if s.historial_recepcion else 'No',
             'Sí' if s.cuestionario_logistico else 'No',
+            len(rutas) if rutas else '',
+            ' | '.join(r.origen for r in rutas),
+            ' | '.join(r.destino for r in rutas),
+            ' | '.join(r.tipo_servicio for r in rutas),
+            ' | '.join(r.tipo_unidad or '' for r in rutas),
+            ' | '.join(r.peso_aprox or '' for r in rutas),
+            ' | '.join(r.temperatura or '' for r in rutas),
+            ' | '.join(r.custodia or '' for r in rutas),
         ]
         for col_num, value in enumerate(row_data, 1):
             cell = ws.cell(row=row_num, column=col_num, value=value)

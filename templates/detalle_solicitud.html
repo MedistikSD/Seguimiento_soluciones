@@ -52,6 +52,17 @@
       {% endif %}
     </a>
   </li>
+  {% if 'transporte' in sol.tema.lower() %}
+  <li class="nav-item">
+    <a class="nav-tab-link" data-bs-toggle="tab" href="#tab-transporte" id="tabTransporteLink">
+      <i class="bi bi-truck me-1"></i>Transporte
+      {% set n_rutas = sol.rutas.count() %}
+      {% if n_rutas > 0 %}
+        <span class="tab-badge" style="background:var(--warning);color:var(--bg-base)">{{ n_rutas }}</span>
+      {% endif %}
+    </a>
+  </li>
+  {% endif %}
 </ul>
 
 <div class="tab-content">
@@ -540,6 +551,160 @@
 </div><!-- /row archivos -->
 </div><!-- /tab-pane archivos -->
 
+
+<!-- ══ TAB TRANSPORTE ══════════════════════════════════════════ -->
+{% if 'transporte' in sol.tema.lower() %}
+<div class="tab-pane fade" id="tab-transporte">
+  <div class="row g-4">
+    <div class="col-12">
+      <div class="section-card">
+        <div class="section-card-header">
+          <h5 class="mb-0"><i class="bi bi-truck me-2"></i>Rutas de transporte
+            <span class="ms-2 text-muted" style="font-size:13px;font-weight:400">{{ sol.rutas.count() }} ruta(s) registrada(s)</span>
+          </h5>
+          {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
+          {% if current_user.rol == 'comercial' and sol.hunter_id != current_user.id %}
+          {% else %}
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarRutas">
+            <i class="bi bi-pencil me-1"></i>Editar rutas
+          </button>
+          {% endif %}
+          {% endif %}
+        </div>
+
+        {% set rutas = sol.rutas.all() %}
+        {% if rutas %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>#</th><th>Origen</th><th>Destino</th><th>Servicio</th>
+                <th>Unidad</th><th>Peso</th><th>Temperatura</th><th>Custodia</th><th>Notas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rutas %}
+              <tr>
+                <td><span class="version-badge">#{{ r.orden }}</span></td>
+                <td class="fw-medium">{{ r.origen }}</td>
+                <td>{{ r.destino }}</td>
+                <td><span class="servicio-badge servicio-{{ r.tipo_servicio|lower|replace(' ','_') }}">{{ r.tipo_servicio }}</span></td>
+                <td>{{ r.tipo_unidad or '—' }}</td>
+                <td>{{ r.peso_aprox or '—' }}</td>
+                <td>
+                  {% if r.temperatura %}
+                  <span class="temp-badge">{{ r.temperatura }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td>{{ r.custodia or '—' }}</td>
+                <td class="text-muted" style="font-size:12px">{{ r.comentarios or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-truck fs-1 d-block mb-2 opacity-25"></i>
+          Sin rutas registradas.
+          {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
+          <br><small>Haz clic en "Editar rutas" para agregar.</small>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal editar rutas -->
+{% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
+<div class="modal fade" id="modalEditarRutas" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content" style="background:var(--bg-card);border:1px solid var(--bg-border);">
+      <div class="modal-header" style="border-color:var(--bg-border);">
+        <h5 class="modal-title" style="color:var(--turquesa)"><i class="bi bi-truck me-2"></i>Editar rutas de transporte</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
+      </div>
+      <form method="POST" action="{{ url_for('guardar_rutas', folio=sol.folio) }}">
+        <div class="modal-body">
+          <div id="rutasEditorWrapper">
+            {% for r in sol.rutas.all() %}
+            <div class="ruta-card mb-3" id="ruta-edit-{{ loop.index }}">
+              <div class="ruta-card-header">
+                <span class="ruta-num">Ruta {{ loop.index }}</span>
+                <button type="button" class="ruta-remove" onclick="this.closest('.ruta-card').remove()">&times;</button>
+              </div>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label required">Origen</label>
+                  <input type="text" name="ruta_origen[]" class="form-control form-control-sm" value="{{ r.origen }}" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label required">Destino</label>
+                  <input type="text" name="ruta_destino[]" class="form-control form-control-sm" value="{{ r.destino }}" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Tipo de servicio</label>
+                  <select name="ruta_tipo_servicio[]" class="form-select form-select-sm">
+                    {% for t in ['FTL','LTL','Mensajería'] %}
+                    <option value="{{ t }}" {% if r.tipo_servicio == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Tipo de unidad</label>
+                  <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">
+                    <option value="">— Selecciona —</option>
+                    {% for t in ['Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'] %}
+                    <option value="{{ t }}" {% if r.tipo_unidad == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Peso aprox.</label>
+                  <input type="text" name="ruta_peso[]" class="form-control form-control-sm" value="{{ r.peso_aprox or '' }}" placeholder="Ej. 1,200 kg">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Temperatura</label>
+                  <select name="ruta_temperatura[]" class="form-select form-select-sm">
+                    <option value="">— Selecciona —</option>
+                    {% for t in ['Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'] %}
+                    <option value="{{ t }}" {% if r.temperatura == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Custodia</label>
+                  <select name="ruta_custodia[]" class="form-select form-select-sm">
+                    {% for t in ['No aplica','Custodia sencilla','Custodia armada'] %}
+                    <option value="{{ t }}" {% if r.custodia == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Comentarios</label>
+                  <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm" value="{{ r.comentarios or '' }}">
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btnAgregarRutaEdit">
+            <i class="bi bi-plus-lg me-1"></i>Agregar ruta
+          </button>
+        </div>
+        <div class="modal-footer" style="border-color:var(--bg-border);">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1"></i>Guardar rutas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
 </div><!-- /tab-content -->
 {% endblock %}
 
@@ -557,6 +722,57 @@ document.querySelectorAll('.nav-tab-link').forEach(el => {
     if (id === '#tab-archivos') history.replaceState(null, '', '#archivos');
     else history.replaceState(null, '', window.location.pathname);
   });
+});
+</script>
+<script>
+// ── Editor de rutas en modal ──────────────────────────────
+const TIPOS_SVC  = ['FTL','LTL','Mensajería'];
+const TIPOS_UNI  = ['','Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
+const TEMPS      = ['','Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'];
+const CUSTODIAS  = ['No aplica','Custodia sencilla','Custodia armada'];
+
+let editRutaCount = document.querySelectorAll('#rutasEditorWrapper .ruta-card').length;
+
+function selOpts(arr, sel='') {
+  return arr.map(t => `<option value="${t}" ${t===sel?'selected':''}>${t||'— Selecciona —'}</option>`).join('');
+}
+
+function crearRutaEdit() {
+  editRutaCount++;
+  const div = document.createElement('div');
+  div.className = 'ruta-card mb-3';
+  div.innerHTML = `
+    <div class="ruta-card-header">
+      <span class="ruta-num">Ruta ${editRutaCount}</span>
+      <button type="button" class="ruta-remove" onclick="this.closest('.ruta-card').remove()">&times;</button>
+    </div>
+    <div class="row g-2">
+      <div class="col-md-6"><label class="form-label required">Origen</label>
+        <input type="text" name="ruta_origen[]" class="form-control form-control-sm" required></div>
+      <div class="col-md-6"><label class="form-label required">Destino</label>
+        <input type="text" name="ruta_destino[]" class="form-control form-control-sm" required></div>
+      <div class="col-md-4"><label class="form-label">Tipo de servicio</label>
+        <select name="ruta_tipo_servicio[]" class="form-select form-select-sm">${selOpts(TIPOS_SVC,'FTL')}</select></div>
+      <div class="col-md-4"><label class="form-label">Tipo de unidad</label>
+        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">${selOpts(TIPOS_UNI)}</select></div>
+      <div class="col-md-4"><label class="form-label">Peso aprox.</label>
+        <input type="text" name="ruta_peso[]" class="form-control form-control-sm" placeholder="Ej. 1,200 kg"></div>
+      <div class="col-md-4"><label class="form-label">Temperatura</label>
+        <select name="ruta_temperatura[]" class="form-select form-select-sm">${selOpts(TEMPS)}</select></div>
+      <div class="col-md-4"><label class="form-label">Custodia</label>
+        <select name="ruta_custodia[]" class="form-select form-select-sm">${selOpts(CUSTODIAS)}</select></div>
+      <div class="col-md-4"><label class="form-label">Comentarios</label>
+        <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm"></div>
+    </div>`;
+  document.getElementById('rutasEditorWrapper').appendChild(div);
+}
+
+const btnEdit = document.getElementById('btnAgregarRutaEdit');
+if (btnEdit) btnEdit.addEventListener('click', crearRutaEdit);
+
+// Auto-add one row if modal opens empty
+document.getElementById('modalEditarRutas')?.addEventListener('shown.bs.modal', () => {
+  if (document.querySelectorAll('#rutasEditorWrapper .ruta-card').length === 0) crearRutaEdit();
 });
 </script>
 <script>

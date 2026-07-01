@@ -97,6 +97,24 @@
             <div class="form-text">Número de orden de urgencia. El Líder Comercial la confirma.</div>
           </div>
 
+          <!-- ── RUTAS DE TRANSPORTE (condicional) ─────────────── -->
+          <div class="col-12" id="seccionRutas" style="display:none;">
+            <div class="rutas-container">
+              <div class="rutas-header">
+                <div>
+                  <span class="rutas-title"><i class="bi bi-truck me-2"></i>Rutas de transporte</span>
+                  <span class="rutas-sub">Agrega todas las rutas que apliquen</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnAgregarRuta">
+                  <i class="bi bi-plus-lg me-1"></i>Agregar ruta
+                </button>
+              </div>
+              <div id="rutasWrapper">
+                <!-- Las rutas se insertan aquí dinámicamente -->
+              </div>
+            </div>
+          </div>
+
           <!-- Archivos adjuntos -->
           <div class="col-12">
             <label class="form-label">
@@ -226,5 +244,96 @@ dz.addEventListener('drop', e => {
   e.preventDefault(); dz.classList.remove('dragover');
   mostrarArchivos(e.dataTransfer.files);
 });
+
+// ── Rutas de transporte ─────────────────────────────────────
+const seccionRutas = document.getElementById('seccionRutas');
+const rutasWrapper = document.getElementById('rutasWrapper');
+let rutaCount = 0;
+
+const TIPOS_SERVICIO = ['FTL','LTL','Mensajería'];
+const TIPOS_UNIDAD   = ['Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
+const TEMPERATURAS   = ['Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'];
+const CUSTODIAS      = ['No aplica','Custodia sencilla','Custodia armada'];
+
+function crearRuta(n) {
+  const div = document.createElement('div');
+  div.className = 'ruta-card';
+  div.id = 'ruta-' + n;
+  div.innerHTML = `
+    <div class="ruta-card-header">
+      <span class="ruta-num">Ruta ${n}</span>
+      <button type="button" class="ruta-remove" onclick="eliminarRuta('ruta-${n}')" title="Eliminar ruta">&times;</button>
+    </div>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label required">Origen</label>
+        <input type="text" name="ruta_origen[]" class="form-control form-control-sm" placeholder="Ej. Medistik Tultitlán, CDMX" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label required">Destino</label>
+        <input type="text" name="ruta_destino[]" class="form-control form-control-sm" placeholder="Ej. Guadalajara, Jalisco" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label required">Tipo de servicio</label>
+        <select name="ruta_tipo_servicio[]" class="form-select form-select-sm" required>
+          ${TIPOS_SERVICIO.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Tipo de unidad</label>
+        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">
+          <option value="">— Selecciona —</option>
+          ${TIPOS_UNIDAD.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Peso aproximado</label>
+        <input type="text" name="ruta_peso[]" class="form-control form-control-sm" placeholder="Ej. 1,200 kg">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Temperatura</label>
+        <select name="ruta_temperatura[]" class="form-select form-select-sm">
+          <option value="">— Selecciona —</option>
+          ${TEMPERATURAS.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Custodia</label>
+        <select name="ruta_custodia[]" class="form-select form-select-sm">
+          ${CUSTODIAS.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Comentarios de la ruta</label>
+        <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm" placeholder="Observaciones">
+      </div>
+    </div>`;
+  return div;
+}
+
+function agregarRuta() {
+  rutaCount++;
+  rutasWrapper.appendChild(crearRuta(rutaCount));
+}
+
+function eliminarRuta(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+document.getElementById('btnAgregarRuta').addEventListener('click', agregarRuta);
+
+// Mostrar/ocultar sección de rutas
+function evaluarRutas() {
+  const tema = selectTema.value.toLowerCase();
+  const necesita = tema.includes('transporte');
+  if (necesita) {
+    seccionRutas.style.display = 'block';
+    if (rutaCount === 0) agregarRuta(); // Al menos una ruta
+  } else {
+    seccionRutas.style.display = 'none';
+  }
+}
+selectTema.addEventListener('change', evaluarRutas);
 </script>
 {% endblock %}

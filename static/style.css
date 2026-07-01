@@ -865,3 +865,58 @@ hr { border-color: var(--bg-border); opacity: 1; }
   border-color: var(--turquesa) !important; color: var(--turquesa) !important; background: transparent !important;
 }
 .btn-outline-turquesa:hover { background: rgba(75,184,200,.15) !important; }
+
+/* ── RUTAS DE TRANSPORTE ──────────────────────── */
+.rutas-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.rutas-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bg-border);
+  background: var(--bg-card);
+}
+.rutas-title { font-weight: 700; font-size: 14px; color: var(--text-primary); }
+.rutas-sub   { font-size: 12px; color: var(--text-tertiary); margin-left: 8px; }
+
+.ruta-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin: 12px;
+}
+.ruta-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ruta-num {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--turquesa);
+  background: rgba(75,184,200,.1); border: 1px solid rgba(75,184,200,.2);
+  padding: 2px 10px; border-radius: 10px;
+}
+.ruta-remove {
+  background: none; border: none; color: var(--text-tertiary);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
+  transition: color var(--transition);
+}
+.ruta-remove:hover { color: var(--danger); }
+
+/* Badges de servicio */
+.servicio-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+}
+.servicio-ftl        { background: rgba(75,184,200,.15); color: var(--turquesa); }
+.servicio-ltl        { background: rgba(174,202,0,.15);  color: var(--verde); }
+.servicio-mensajería { background: rgba(245,158,11,.15); color: var(--warning); }
+
+/* Temperatura badge */
+.temp-badge {
+  font-size: 11px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(59,130,246,.12); color: #60A5FA;
+  border: 1px solid rgba(59,130,246,.2);
+}

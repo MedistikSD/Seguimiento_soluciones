@@ -140,3 +140,22 @@ class Documento(db.Model):
     versiones_anteriores = db.relationship('Documento', foreign_keys=[documento_padre_id],
                                            backref=db.backref('padre', remote_side=[id]),
                                            lazy='dynamic')
+
+class RutaTransporte(db.Model):
+    __tablename__ = 'rutas_transporte'
+    id              = db.Column(db.Integer, primary_key=True)
+    solicitud_id    = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
+    orden           = db.Column(db.Integer, default=1)          # Número de ruta (1, 2, 3...)
+    origen          = db.Column(db.String(300), nullable=False)  # Texto libre
+    destino         = db.Column(db.String(300), nullable=False)  # Texto libre
+    tipo_servicio   = db.Column(db.String(20),  nullable=False)  # FTL, LTL, Mensajería
+    tipo_unidad     = db.Column(db.String(50),  nullable=True)   # Pick up, 3.5T, Rabón, Torton, Trailer
+    peso_aprox      = db.Column(db.String(50),  nullable=True)   # Texto: "1,200 kg"
+    temperatura     = db.Column(db.String(50),  nullable=True)   # Ambiente, Refrigerado 2-8°C, Congelado, etc.
+    custodia        = db.Column(db.String(30),  nullable=True)   # Sencilla, Armada, No aplica
+    comentarios     = db.Column(db.Text,        nullable=True)
+    created_at      = db.Column(db.DateTime, default=utcnow)
+
+    solicitud = db.relationship('Solicitud', foreign_keys=[solicitud_id],
+                                backref=db.backref('rutas', lazy='dynamic',
+                                                   order_by='RutaTransporte.orden'))
