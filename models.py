@@ -143,19 +143,34 @@ class Documento(db.Model):
 
 class RutaTransporte(db.Model):
     __tablename__ = 'rutas_transporte'
-    id              = db.Column(db.Integer, primary_key=True)
-    solicitud_id    = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
-    orden           = db.Column(db.Integer, default=1)          # Número de ruta (1, 2, 3...)
-    origen          = db.Column(db.String(300), nullable=False)  # Texto libre
-    destino         = db.Column(db.String(300), nullable=False)  # Texto libre
-    tipo_servicio   = db.Column(db.String(20),  nullable=False)  # FTL, LTL, Mensajería
-    tipo_unidad     = db.Column(db.String(50),  nullable=True)   # Pick up, 3.5T, Rabón, Torton, Trailer
-    peso_aprox      = db.Column(db.String(50),  nullable=True)   # Texto: "1,200 kg"
-    temperatura     = db.Column(db.String(50),  nullable=True)   # Ambiente, Refrigerado 2-8°C, Congelado, etc.
-    custodia        = db.Column(db.String(30),  nullable=True)   # Sencilla, Armada, No aplica
-    comentarios     = db.Column(db.Text,        nullable=True)
-    created_at      = db.Column(db.DateTime, default=utcnow)
+    id                = db.Column(db.Integer, primary_key=True)
+    solicitud_id      = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
+    orden             = db.Column(db.Integer, default=1)
+    # Origen: estado + ciudad separados para homologar
+    origen_estado     = db.Column(db.String(100), nullable=False)
+    origen_ciudad     = db.Column(db.String(100), nullable=False)
+    # Destino: estado + ciudad separados
+    destino_estado    = db.Column(db.String(100), nullable=False)
+    destino_ciudad    = db.Column(db.String(100), nullable=False)
+    tipo_servicio     = db.Column(db.String(20),  nullable=False)  # FTL, LTL, Mensajería
+    # FTL/Mensajería → tipo_unidad; LTL → kg_por_entrega y m3_por_entrega
+    tipo_unidad       = db.Column(db.String(50),  nullable=True)   # 1.5 Ton, 3.5T, Rabón, Torton, Trailer
+    peso_kg           = db.Column(db.Float,       nullable=True)   # Peso en kg (FTL/Mensajería)
+    kg_por_entrega    = db.Column(db.Float,       nullable=True)   # LTL: kg por entrega
+    m3_por_entrega    = db.Column(db.Float,       nullable=True)   # LTL: m3 por entrega
+    temperatura       = db.Column(db.String(50),  nullable=True)
+    custodia          = db.Column(db.String(30),  nullable=True)
+    comentarios       = db.Column(db.Text,        nullable=True)
+    created_at        = db.Column(db.DateTime, default=utcnow)
 
     solicitud = db.relationship('Solicitud', foreign_keys=[solicitud_id],
                                 backref=db.backref('rutas', lazy='dynamic',
                                                    order_by='RutaTransporte.orden'))
+
+    @property
+    def origen(self):
+        return f"{self.origen_ciudad}, {self.origen_estado}"
+
+    @property
+    def destino(self):
+        return f"{self.destino_ciudad}, {self.destino_estado}" 

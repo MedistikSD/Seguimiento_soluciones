@@ -105,11 +105,49 @@
                   <span class="rutas-title"><i class="bi bi-truck me-2"></i>Rutas de transporte</span>
                   <span class="rutas-sub">Agrega todas las rutas que apliquen</span>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="btnAgregarRuta">
-                  <i class="bi bi-plus-lg me-1"></i>Agregar ruta
-                </button>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="btnModoMasivo">
+                    <i class="bi bi-copy me-1"></i>Modo masivo
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="btnAgregarRuta">
+                    <i class="bi bi-plus-lg me-1"></i>Agregar ruta
+                  </button>
+                </div>
               </div>
-              <div id="rutasWrapper">
+
+              <!-- Panel modo masivo -->
+              <div id="panelMasivo" style="display:none;background:var(--bg-hover);border-bottom:1px solid var(--bg-border);padding:14px 16px;">
+                <p class="text-muted mb-2" style="font-size:12px"><i class="bi bi-info-circle me-1"></i>Mismo origen y destino para múltiples rutas. Solo define origen, destino y cuántas rutas crear.</p>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-2">
+                    <label class="form-label" style="font-size:11px">Origen — Estado</label>
+                    <select id="mOE" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" style="font-size:11px">Origen — Ciudad</label>
+                    <select id="mOC" class="form-select form-select-sm"><option value="">— Ciudad —</option></select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" style="font-size:11px">Destino — Estado</label>
+                    <select id="mDE" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" style="font-size:11px">Destino — Ciudad</label>
+                    <select id="mDC" class="form-select form-select-sm"><option value="">— Ciudad —</option></select>
+                  </div>
+                  <div class="col-md-1">
+                    <label class="form-label" style="font-size:11px">Núm. rutas</label>
+                    <input type="number" id="mCantidad" class="form-control form-control-sm" min="1" max="20" value="2">
+                  </div>
+                  <div class="col-md-auto">
+                    <button type="button" class="btn btn-sm btn-primary" id="btnAplicarMasivo">
+                      <i class="bi bi-lightning me-1"></i>Generar rutas
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="rutasWrapper" style="padding:4px 0;">
                 <!-- Las rutas se insertan aquí dinámicamente -->
               </div>
             </div>
@@ -179,6 +217,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='estados_ciudades.js') }}"></script>
 <script>
 // Fecha mínima = hoy
 const hoy = new Date().toISOString().split('T')[0];
@@ -251,9 +290,63 @@ const rutasWrapper = document.getElementById('rutasWrapper');
 let rutaCount = 0;
 
 const TIPOS_SERVICIO = ['FTL','LTL','Mensajería'];
-const TIPOS_UNIDAD   = ['Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
+const TIPOS_UNIDAD   = ['1.5 Ton','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
 const TEMPERATURAS   = ['Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'];
 const CUSTODIAS      = ['No aplica','Custodia sencilla','Custodia armada'];
+const ESTADOS        = Object.keys(ESTADOS_CIUDADES).sort();
+
+function estadoOpts(sel='') {
+  return '<option value="">— Estado —</option>' + ESTADOS.map(e =>
+    `<option value="${e}" ${e===sel?'selected':''}>${e}</option>`).join('');
+}
+function ciudadOpts(estado, sel='') {
+  const ciudades = ESTADOS_CIUDADES[estado] || [];
+  return '<option value="">— Ciudad —</option>' + ciudades.map(c =>
+    `<option value="${c}" ${c===sel?'selected':''}>${c}</option>`).join('');
+}
+function onEstadoChange(selectEl, ciudadId) {
+  document.getElementById(ciudadId).innerHTML = ciudadOpts(selectEl.value);
+}
+
+function campoPeso(n, svc='FTL') {
+  if (svc === 'LTL') {
+    return `
+      <div class="col-md-3">
+        <label class="form-label">Kg por entrega</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_kg_por_entrega[]" class="form-control form-control-sm" min="0" step="0.1" placeholder="0">
+          <span class="input-group-text">kg</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">M³ por entrega</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_m3_por_entrega[]" class="form-control form-control-sm" min="0" step="0.01" placeholder="0">
+          <span class="input-group-text">m³</span>
+        </div>
+      </div>
+      <input type="hidden" name="ruta_tipo_unidad[]" value="">
+      <input type="hidden" name="ruta_peso_kg[]" value="">`;
+  } else {
+    return `
+      <div class="col-md-3">
+        <label class="form-label">Tipo de unidad</label>
+        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">
+          <option value="">— Selecciona —</option>
+          ${TIPOS_UNIDAD.map(t=>`<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Peso (kg)</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_peso_kg[]" class="form-control form-control-sm" min="0" step="0.1" placeholder="0">
+          <span class="input-group-text">kg</span>
+        </div>
+      </div>
+      <input type="hidden" name="ruta_kg_por_entrega[]" value="">
+      <input type="hidden" name="ruta_m3_por_entrega[]" value="">`;
+  }
+}
 
 function crearRuta(n) {
   const div = document.createElement('div');
@@ -262,53 +355,82 @@ function crearRuta(n) {
   div.innerHTML = `
     <div class="ruta-card-header">
       <span class="ruta-num">Ruta ${n}</span>
-      <button type="button" class="ruta-remove" onclick="eliminarRuta('ruta-${n}')" title="Eliminar ruta">&times;</button>
+      <button type="button" class="ruta-remove" onclick="eliminarRuta('ruta-${n}')">&times;</button>
     </div>
     <div class="row g-2">
-      <div class="col-md-6">
-        <label class="form-label required">Origen</label>
-        <input type="text" name="ruta_origen[]" class="form-control form-control-sm" placeholder="Ej. Medistik Tultitlán, CDMX" required>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label required">Destino</label>
-        <input type="text" name="ruta_destino[]" class="form-control form-control-sm" placeholder="Ej. Guadalajara, Jalisco" required>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label required">Tipo de servicio</label>
-        <select name="ruta_tipo_servicio[]" class="form-select form-select-sm" required>
-          ${TIPOS_SERVICIO.map(t => `<option value="${t}">${t}</option>`).join('')}
+      <!-- Origen -->
+      <div class="col-md-3">
+        <label class="form-label required">Origen — Estado</label>
+        <select name="ruta_origen_estado[]" class="form-select form-select-sm" required
+                id="oe-${n}" onchange="onEstadoChange(this,'oc-${n}')">
+          ${estadoOpts()}
         </select>
       </div>
-      <div class="col-md-4">
-        <label class="form-label">Tipo de unidad</label>
-        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">
-          <option value="">— Selecciona —</option>
-          ${TIPOS_UNIDAD.map(t => `<option value="${t}">${t}</option>`).join('')}
+      <div class="col-md-3">
+        <label class="form-label required">Origen — Ciudad</label>
+        <select name="ruta_origen_ciudad[]" class="form-select form-select-sm" required id="oc-${n}">
+          <option value="">— Ciudad —</option>
         </select>
       </div>
-      <div class="col-md-4">
-        <label class="form-label">Peso aproximado</label>
-        <input type="text" name="ruta_peso[]" class="form-control form-control-sm" placeholder="Ej. 1,200 kg">
+      <!-- Destino -->
+      <div class="col-md-3">
+        <label class="form-label required">Destino — Estado</label>
+        <select name="ruta_destino_estado[]" class="form-select form-select-sm" required
+                id="de-${n}" onchange="onEstadoChange(this,'dc-${n}')">
+          ${estadoOpts()}
+        </select>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
+        <label class="form-label required">Destino — Ciudad</label>
+        <select name="ruta_destino_ciudad[]" class="form-select form-select-sm" required id="dc-${n}">
+          <option value="">— Ciudad —</option>
+        </select>
+      </div>
+      <!-- Servicio -->
+      <div class="col-md-2">
+        <label class="form-label required">Servicio</label>
+        <select name="ruta_tipo_servicio[]" class="form-select form-select-sm ruta-svc-select" required
+                id="svc-${n}" onchange="actualizarCamposPeso('${n}',this.value)">
+          ${TIPOS_SERVICIO.map(t=>`<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>
+      <!-- Peso/unidad condicional -->
+      <div class="ruta-peso-wrap-${n} col-12 row g-2 p-0 m-0" id="pesoWrap-${n}">
+        ${campoPeso(n,'FTL')}
+      </div>
+      <!-- Temperatura -->
+      <div class="col-md-2">
         <label class="form-label">Temperatura</label>
         <select name="ruta_temperatura[]" class="form-select form-select-sm">
           <option value="">— Selecciona —</option>
-          ${TEMPERATURAS.map(t => `<option value="${t}">${t}</option>`).join('')}
+          ${TEMPERATURAS.map(t=>`<option value="${t}">${t}</option>`).join('')}
         </select>
       </div>
-      <div class="col-md-4">
+      <!-- Custodia -->
+      <div class="col-md-2">
         <label class="form-label">Custodia</label>
         <select name="ruta_custodia[]" class="form-select form-select-sm">
-          ${CUSTODIAS.map(t => `<option value="${t}">${t}</option>`).join('')}
+          ${CUSTODIAS.map(t=>`<option value="${t}">${t}</option>`).join('')}
         </select>
       </div>
+      <!-- Comentarios -->
       <div class="col-md-4">
-        <label class="form-label">Comentarios de la ruta</label>
-        <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm" placeholder="Observaciones">
+        <label class="form-label">Comentarios</label>
+        <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm" placeholder="Observaciones de la ruta">
       </div>
     </div>`;
   return div;
+}
+
+function actualizarCamposPeso(n, svc) {
+  const wrap = document.getElementById('pesoWrap-' + n);
+  if (!wrap) return;
+  // Replace inner html keeping the div structure
+  const tmpDiv = document.createElement('div');
+  tmpDiv.innerHTML = campoPeso(n, svc);
+  // replace children
+  while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+  while (tmpDiv.firstChild) wrap.appendChild(tmpDiv.firstChild);
 }
 
 function agregarRuta() {
@@ -318,22 +440,75 @@ function agregarRuta() {
 
 function eliminarRuta(id) {
   const el = document.getElementById(id);
-  if (el) el.remove();
+  if (el && rutasWrapper.querySelectorAll('.ruta-card').length > 1) el.remove();
 }
 
 document.getElementById('btnAgregarRuta').addEventListener('click', agregarRuta);
 
-// Mostrar/ocultar sección de rutas
+// ── MODO MASIVO ────────────────────────────────────────────────
+document.getElementById('btnModoMasivo').addEventListener('click', function() {
+  const panel = document.getElementById('panelMasivo');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('btnAplicarMasivo').addEventListener('click', function() {
+  const oe = document.getElementById('mOE').value;
+  const oc = document.getElementById('mOC').value;
+  const de = document.getElementById('mDE').value;
+  const dc = document.getElementById('mDC').value;
+  const n  = parseInt(document.getElementById('mCantidad').value) || 1;
+
+  if (!oe||!oc||!de||!dc) { alert('Completa todos los campos del modo masivo.'); return; }
+
+  // Remove existing cards and create n new ones
+  rutasWrapper.innerHTML = '';
+  rutaCount = 0;
+  for (let i = 0; i < n; i++) {
+    rutaCount++;
+    const card = crearRuta(rutaCount);
+    rutasWrapper.appendChild(card);
+    // Set origin selects
+    const oeEl = document.getElementById('oe-'+rutaCount);
+    oeEl.innerHTML = estadoOpts(oe);
+    oeEl.value = oe;
+    const ocEl = document.getElementById('oc-'+rutaCount);
+    ocEl.innerHTML = ciudadOpts(oe, oc);
+    ocEl.value = oc;
+    // Set destination selects
+    const deEl = document.getElementById('de-'+rutaCount);
+    deEl.innerHTML = estadoOpts(de);
+    deEl.value = de;
+    const dcEl = document.getElementById('dc-'+rutaCount);
+    dcEl.innerHTML = ciudadOpts(de, dc);
+    dcEl.value = dc;
+  }
+  document.getElementById('panelMasivo').style.display = 'none';
+});
+
+// Update masivo city dropdowns
+document.getElementById('mOE').addEventListener('change', function() {
+  document.getElementById('mOC').innerHTML = ciudadOpts(this.value);
+});
+document.getElementById('mDE').addEventListener('change', function() {
+  document.getElementById('mDC').innerHTML = ciudadOpts(this.value);
+});
+
+// Show/hide route section
 function evaluarRutas() {
   const tema = selectTema.value.toLowerCase();
   const necesita = tema.includes('transporte');
   if (necesita) {
     seccionRutas.style.display = 'block';
-    if (rutaCount === 0) agregarRuta(); // Al menos una ruta
+    if (rutaCount === 0) agregarRuta();
   } else {
     seccionRutas.style.display = 'none';
   }
 }
 selectTema.addEventListener('change', evaluarRutas);
+
+// Init masivo estado selects
+['mOE','mDE'].forEach(id => {
+  document.getElementById(id).innerHTML = estadoOpts();
+});
 </script>
 {% endblock %}

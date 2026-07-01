@@ -562,14 +562,19 @@
           <h5 class="mb-0"><i class="bi bi-truck me-2"></i>Rutas de transporte
             <span class="ms-2 text-muted" style="font-size:13px;font-weight:400">{{ sol.rutas.count() }} ruta(s) registrada(s)</span>
           </h5>
-          {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
-          {% if current_user.rol == 'comercial' and sol.hunter_id != current_user.id %}
-          {% else %}
-          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarRutas">
-            <i class="bi bi-pencil me-1"></i>Editar rutas
-          </button>
-          {% endif %}
-          {% endif %}
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('exportar_rutas') }}?folio={{ sol.folio }}"
+               class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-file-earmark-excel me-1"></i>Exportar rutas
+            </a>
+            {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
+            {% if not (current_user.rol == 'comercial' and sol.hunter_id != current_user.id) %}
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarRutas">
+              <i class="bi bi-pencil me-1"></i>Editar rutas
+            </button>
+            {% endif %}
+            {% endif %}
+          </div>
         </div>
 
         {% set rutas = sol.rutas.all() %}
@@ -656,7 +661,7 @@
                   <label class="form-label">Tipo de unidad</label>
                   <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">
                     <option value="">— Selecciona —</option>
-                    {% for t in ['1.5 Ton','3.5 Ton','Rabón','Torton','Trailer','No aplica'] %}
+                    {% for t in ['Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'] %}
                     <option value="{{ t }}" {% if r.tipo_unidad == t %}selected{% endif %}>{{ t }}</option>
                     {% endfor %}
                   </select>
@@ -724,12 +729,28 @@ document.querySelectorAll('.nav-tab-link').forEach(el => {
   });
 });
 </script>
+<script src="{{ url_for('static', filename='estados_ciudades.js') }}"></script>
 <script>
 // ── Editor de rutas en modal ──────────────────────────────
 const TIPOS_SVC  = ['FTL','LTL','Mensajería'];
-const TIPOS_UNI  = ['','1.5 Ton','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
+const TIPOS_UNI  = ['1.5 Ton','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
 const TEMPS      = ['','Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'];
 const CUSTODIAS  = ['No aplica','Custodia sencilla','Custodia armada'];
+const TEMPS      = ['','Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'];
+const ESTADOS    = Object.keys(ESTADOS_CIUDADES).sort();
+
+function estadoOpts(sel='') {
+  return '<option value="">— Estado —</option>' + ESTADOS.map(e =>
+    `<option value="${e}" ${e===sel?'selected':''}>${e}</option>`).join('');
+}
+function ciudadOpts(estado, sel='') {
+  const ciudades = ESTADOS_CIUDADES[estado] || [];
+  return '<option value="">— Ciudad —</option>' + ciudades.map(c =>
+    `<option value="${c}" ${c===sel?'selected':''}>${c}</option>`).join('');
+}
+function selOpts(arr, sel='') {
+  return arr.map(t => `<option value="${t}" ${t===sel?'selected':''}>${t||'— Selecciona —'}</option>`).join('');
+}
 
 let editRutaCount = document.querySelectorAll('#rutasEditorWrapper .ruta-card').length;
 
@@ -737,34 +758,96 @@ function selOpts(arr, sel='') {
   return arr.map(t => `<option value="${t}" ${t===sel?'selected':''}>${t||'— Selecciona —'}</option>`).join('');
 }
 
-function crearRutaEdit() {
+function crearRutaEdit(oe='',oc='',de='',dc='',svc='FTL',uni='',peso='',kge='',m3e='',temp='',cust='No aplica',com='') {
   editRutaCount++;
+  const n = editRutaCount;
   const div = document.createElement('div');
   div.className = 'ruta-card mb-3';
+
+  const pesoHtml = svc === 'LTL'
+    ? `<div class="col-md-3"><label class="form-label">Kg/entrega</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_kg_por_entrega[]" class="form-control" value="${kge}" min="0" step="0.1">
+          <span class="input-group-text">kg</span></div></div>
+       <div class="col-md-3"><label class="form-label">M³/entrega</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_m3_por_entrega[]" class="form-control" value="${m3e}" min="0" step="0.01">
+          <span class="input-group-text">m³</span></div></div>
+       <input type="hidden" name="ruta_tipo_unidad[]" value="">
+       <input type="hidden" name="ruta_peso_kg[]" value="">`
+    : `<div class="col-md-3"><label class="form-label">Tipo de unidad</label>
+        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">${selOpts(TIPOS_UNI,uni)}</select></div>
+       <div class="col-md-3"><label class="form-label">Peso (kg)</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_peso_kg[]" class="form-control" value="${peso}" min="0" step="0.1">
+          <span class="input-group-text">kg</span></div></div>
+       <input type="hidden" name="ruta_kg_por_entrega[]" value="">
+       <input type="hidden" name="ruta_m3_por_entrega[]" value="">`;
+
   div.innerHTML = `
     <div class="ruta-card-header">
-      <span class="ruta-num">Ruta ${editRutaCount}</span>
+      <span class="ruta-num">Ruta ${n}</span>
       <button type="button" class="ruta-remove" onclick="this.closest('.ruta-card').remove()">&times;</button>
     </div>
     <div class="row g-2">
-      <div class="col-md-6"><label class="form-label required">Origen</label>
-        <input type="text" name="ruta_origen[]" class="form-control form-control-sm" required></div>
-      <div class="col-md-6"><label class="form-label required">Destino</label>
-        <input type="text" name="ruta_destino[]" class="form-control form-control-sm" required></div>
-      <div class="col-md-4"><label class="form-label">Tipo de servicio</label>
-        <select name="ruta_tipo_servicio[]" class="form-select form-select-sm">${selOpts(TIPOS_SVC,'FTL')}</select></div>
-      <div class="col-md-4"><label class="form-label">Tipo de unidad</label>
-        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">${selOpts(TIPOS_UNI)}</select></div>
-      <div class="col-md-4"><label class="form-label">Peso aprox.</label>
-        <input type="text" name="ruta_peso[]" class="form-control form-control-sm" placeholder="Ej. 1,200 kg"></div>
-      <div class="col-md-4"><label class="form-label">Temperatura</label>
-        <select name="ruta_temperatura[]" class="form-select form-select-sm">${selOpts(TEMPS)}</select></div>
-      <div class="col-md-4"><label class="form-label">Custodia</label>
-        <select name="ruta_custodia[]" class="form-select form-select-sm">${selOpts(CUSTODIAS)}</select></div>
+      <div class="col-md-3"><label class="form-label required">Origen — Estado</label>
+        <select name="ruta_origen_estado[]" class="form-select form-select-sm" required
+                id="eoe-${n}" onchange="onEstadoChangeEdit('eoe-${n}','eoc-${n}')">
+          ${estadoOpts(oe)}</select></div>
+      <div class="col-md-3"><label class="form-label required">Origen — Ciudad</label>
+        <select name="ruta_origen_ciudad[]" class="form-select form-select-sm" required id="eoc-${n}">
+          ${ciudadOpts(oe,oc)}</select></div>
+      <div class="col-md-3"><label class="form-label required">Destino — Estado</label>
+        <select name="ruta_destino_estado[]" class="form-select form-select-sm" required
+                id="ede-${n}" onchange="onEstadoChangeEdit('ede-${n}','edc-${n}')">
+          ${estadoOpts(de)}</select></div>
+      <div class="col-md-3"><label class="form-label required">Destino — Ciudad</label>
+        <select name="ruta_destino_ciudad[]" class="form-select form-select-sm" required id="edc-${n}">
+          ${ciudadOpts(de,dc)}</select></div>
+      <div class="col-md-2"><label class="form-label">Servicio</label>
+        <select name="ruta_tipo_servicio[]" class="form-select form-select-sm" id="esvc-${n}"
+                onchange="actualizarPesoEdit('${n}',this.value,'e')">
+          ${selOpts(TIPOS_SVC,svc)}</select></div>
+      <div class="row g-2 col-12 p-0 m-0" id="epesoWrap-${n}">${pesoHtml}</div>
+      <div class="col-md-2"><label class="form-label">Temperatura</label>
+        <select name="ruta_temperatura[]" class="form-select form-select-sm">${selOpts(TEMPS,temp)}</select></div>
+      <div class="col-md-2"><label class="form-label">Custodia</label>
+        <select name="ruta_custodia[]" class="form-select form-select-sm">${selOpts(CUSTODIAS,cust)}</select></div>
       <div class="col-md-4"><label class="form-label">Comentarios</label>
-        <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm"></div>
+        <input type="text" name="ruta_comentarios[]" class="form-control form-control-sm" value="${com}"></div>
     </div>`;
   document.getElementById('rutasEditorWrapper').appendChild(div);
+}
+
+function onEstadoChangeEdit(eid, cid) {
+  const est = document.getElementById(eid).value;
+  document.getElementById(cid).innerHTML = ciudadOpts(est);
+}
+
+function actualizarPesoEdit(n, svc, prefix) {
+  const wrapId = prefix + 'pesoWrap-' + n;
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  const html = svc === 'LTL'
+    ? `<div class="col-md-3"><label class="form-label">Kg/entrega</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_kg_por_entrega[]" class="form-control" min="0" step="0.1">
+          <span class="input-group-text">kg</span></div></div>
+       <div class="col-md-3"><label class="form-label">M³/entrega</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_m3_por_entrega[]" class="form-control" min="0" step="0.01">
+          <span class="input-group-text">m³</span></div></div>
+       <input type="hidden" name="ruta_tipo_unidad[]" value="">
+       <input type="hidden" name="ruta_peso_kg[]" value="">`
+    : `<div class="col-md-3"><label class="form-label">Tipo de unidad</label>
+        <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">${selOpts(TIPOS_UNI)}</select></div>
+       <div class="col-md-3"><label class="form-label">Peso (kg)</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="ruta_peso_kg[]" class="form-control" min="0" step="0.1">
+          <span class="input-group-text">kg</span></div></div>
+       <input type="hidden" name="ruta_kg_por_entrega[]" value="">
+       <input type="hidden" name="ruta_m3_por_entrega[]" value="">`;
+  wrap.innerHTML = html;
 }
 
 const btnEdit = document.getElementById('btnAgregarRutaEdit');

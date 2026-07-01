@@ -42,16 +42,27 @@ with app.app_context():
                     id SERIAL PRIMARY KEY,
                     solicitud_id INTEGER REFERENCES solicitudes(id),
                     orden INTEGER DEFAULT 1,
-                    origen VARCHAR(300) NOT NULL,
-                    destino VARCHAR(300) NOT NULL,
+                    origen_estado VARCHAR(100) NOT NULL DEFAULT '',
+                    origen_ciudad VARCHAR(100) NOT NULL DEFAULT '',
+                    destino_estado VARCHAR(100) NOT NULL DEFAULT '',
+                    destino_ciudad VARCHAR(100) NOT NULL DEFAULT '',
                     tipo_servicio VARCHAR(20) NOT NULL,
                     tipo_unidad VARCHAR(50),
-                    peso_aprox VARCHAR(50),
+                    peso_kg FLOAT,
+                    kg_por_entrega FLOAT,
+                    m3_por_entrega FLOAT,
                     temperatura VARCHAR(50),
                     custodia VARCHAR(30),
                     comentarios TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )""",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS origen_estado VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS origen_ciudad VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS destino_estado VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS destino_ciudad VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS peso_kg FLOAT",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS kg_por_entrega FLOAT",
+                "ALTER TABLE rutas_transporte ADD COLUMN IF NOT EXISTS m3_por_entrega FLOAT",
             ]
             for sql in migraciones:
                 try:
@@ -381,16 +392,33 @@ def nueva_solicitud():
             custodias     = request.form.getlist('ruta_custodia[]')
             comentarios_r = request.form.getlist('ruta_comentarios[]')
 
-            for i, origen in enumerate(origenes):
-                if origen.strip() and i < len(destinos) and destinos[i].strip():
+            o_estados = request.form.getlist('ruta_origen_estado[]')
+            o_ciudades = request.form.getlist('ruta_origen_ciudad[]')
+            d_estados  = request.form.getlist('ruta_destino_estado[]')
+            d_ciudades = request.form.getlist('ruta_destino_ciudad[]')
+            pesos_kg   = request.form.getlist('ruta_peso_kg[]')
+            kg_ent     = request.form.getlist('ruta_kg_por_entrega[]')
+            m3_ent     = request.form.getlist('ruta_m3_por_entrega[]')
+
+            for i in range(len(o_estados)):
+                oe = o_estados[i].strip() if i < len(o_estados) else ''
+                oc = o_ciudades[i].strip() if i < len(o_ciudades) else ''
+                de = d_estados[i].strip() if i < len(d_estados) else ''
+                dc = d_ciudades[i].strip() if i < len(d_ciudades) else ''
+                if oe and oc and de and dc:
+                    svc = servicios[i] if i < len(servicios) else 'FTL'
+                    def _f(lst, idx):
+                        try: v = lst[idx].strip(); return float(v) if v else None
+                        except: return None
                     ruta = RutaTransporte(
-                        solicitud_id=sol.id,
-                        orden=i+1,
-                        origen=origen.strip(),
-                        destino=destinos[i].strip(),
-                        tipo_servicio=servicios[i] if i < len(servicios) else 'FTL',
-                        tipo_unidad=unidades[i].strip() if i < len(unidades) else None,
-                        peso_aprox=pesos[i].strip() if i < len(pesos) else None,
+                        solicitud_id=sol.id, orden=i+1,
+                        origen_estado=oe, origen_ciudad=oc,
+                        destino_estado=de, destino_ciudad=dc,
+                        tipo_servicio=svc,
+                        tipo_unidad=unidades[i].strip() if svc != 'LTL' and i < len(unidades) else None,
+                        peso_kg=_f(pesos_kg, i) if svc != 'LTL' else None,
+                        kg_por_entrega=_f(kg_ent, i) if svc == 'LTL' else None,
+                        m3_por_entrega=_f(m3_ent, i) if svc == 'LTL' else None,
                         temperatura=temperaturas[i].strip() if i < len(temperaturas) else None,
                         custodia=custodias[i].strip() if i < len(custodias) else None,
                         comentarios=comentarios_r[i].strip() if i < len(comentarios_r) else None,
@@ -917,27 +945,42 @@ def guardar_rutas(folio):
     # Eliminar rutas anteriores y reescribir
     RutaTransporte.query.filter_by(solicitud_id=sol.id).delete()
 
-    origenes      = request.form.getlist('ruta_origen[]')
-    destinos      = request.form.getlist('ruta_destino[]')
-    servicios     = request.form.getlist('ruta_tipo_servicio[]')
-    unidades      = request.form.getlist('ruta_tipo_unidad[]')
-    pesos         = request.form.getlist('ruta_peso[]')
-    temperaturas  = request.form.getlist('ruta_temperatura[]')
-    custodias     = request.form.getlist('ruta_custodia[]')
-    comentarios_r = request.form.getlist('ruta_comentarios[]')
+    o_estados  = request.form.getlist('ruta_origen_estado[]')
+    o_ciudades = request.form.getlist('ruta_origen_ciudad[]')
+    d_estados  = request.form.getlist('ruta_destino_estado[]')
+    d_ciudades = request.form.getlist('ruta_destino_ciudad[]')
+    servicios  = request.form.getlist('ruta_tipo_servicio[]')
+    unidades   = request.form.getlist('ruta_tipo_unidad[]')
+    pesos_kg   = request.form.getlist('ruta_peso_kg[]')
+    kg_ent     = request.form.getlist('ruta_kg_por_entrega[]')
+    m3_ent     = request.form.getlist('ruta_m3_por_entrega[]')
+    temps      = request.form.getlist('ruta_temperatura[]')
+    custodias  = request.form.getlist('ruta_custodia[]')
+    coments    = request.form.getlist('ruta_comentarios[]')
+
+    def _f(lst, i):
+        try: v = lst[i].strip(); return float(v) if v else None
+        except: return None
 
     count = 0
-    for i, origen in enumerate(origenes):
-        if origen.strip() and i < len(destinos) and destinos[i].strip():
+    for i in range(len(o_estados)):
+        oe = o_estados[i].strip(); oc = o_ciudades[i].strip() if i < len(o_ciudades) else ''
+        de = d_estados[i].strip() if i < len(d_estados) else ''
+        dc = d_ciudades[i].strip() if i < len(d_ciudades) else ''
+        if oe and oc and de and dc:
+            svc = servicios[i] if i < len(servicios) else 'FTL'
             db.session.add(RutaTransporte(
-                solicitud_id=sol.id, orden=i+1,
-                origen=origen.strip(), destino=destinos[i].strip(),
-                tipo_servicio=servicios[i] if i < len(servicios) else 'FTL',
-                tipo_unidad=unidades[i].strip() if i < len(unidades) else None,
-                peso_aprox=pesos[i].strip() if i < len(pesos) else None,
-                temperatura=temperaturas[i].strip() if i < len(temperaturas) else None,
+                solicitud_id=sol.id, orden=count+1,
+                origen_estado=oe, origen_ciudad=oc,
+                destino_estado=de, destino_ciudad=dc,
+                tipo_servicio=svc,
+                tipo_unidad=unidades[i].strip() if svc != 'LTL' and i < len(unidades) else None,
+                peso_kg=_f(pesos_kg, i) if svc != 'LTL' else None,
+                kg_por_entrega=_f(kg_ent, i) if svc == 'LTL' else None,
+                m3_por_entrega=_f(m3_ent, i) if svc == 'LTL' else None,
+                temperatura=temps[i].strip() if i < len(temps) else None,
                 custodia=custodias[i].strip() if i < len(custodias) else None,
-                comentarios=comentarios_r[i].strip() if i < len(comentarios_r) else None,
+                comentarios=coments[i].strip() if i < len(coments) else None,
             ))
             count += 1
 
@@ -946,6 +989,83 @@ def guardar_rutas(folio):
     db.session.commit()
     flash(f'{count} ruta(s) de transporte guardadas correctamente.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#tab-transporte')
+
+
+@app.route('/exportar/rutas-transporte')
+@login_required
+@rol_requerido('administrador','lider_comercial','lider_soluciones','aux_comercial')
+def exportar_rutas():
+    """Exporta todas las rutas de transporte a Excel."""
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Rutas de Transporte"
+
+    hdr_font  = Font(bold=True, color="FFFFFF", size=11)
+    hdr_fill  = PatternFill("solid", fgColor="0F172A")
+    alt_fill  = PatternFill("solid", fgColor="161B22")
+    cell_border = Border(
+        bottom=Side(style='thin', color='2A3040'),
+        right=Side(style='thin', color='2A3040')
+    )
+
+    headers = [
+        "Folio", "Cliente", "Tipo Solicitud", "Subtipo", "Comercial",
+        "#", "Origen Estado", "Origen Ciudad", "Destino Estado", "Destino Ciudad",
+        "Tipo Servicio", "Tipo Unidad", "Peso (kg)",
+        "Kg/Entrega (LTL)", "M3/Entrega (LTL)",
+        "Temperatura", "Custodia", "Comentarios"
+    ]
+    col_widths = [16,28,22,10,22,5,20,22,20,22,16,16,12,14,14,22,18,30]
+
+    for col, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = hdr_font; cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.column_dimensions[get_column_letter(col)].width = w
+    ws.row_dimensions[1].height = 28
+
+    # Only solicitudes with transporte tema
+    folio_filter = request.args.get('folio','').strip()
+    q = Solicitud.query.filter(Solicitud.tema.ilike('%transporte%'))
+    if folio_filter:
+        q = q.filter(Solicitud.folio == folio_filter)
+    sols = q.order_by(Solicitud.id.desc()).all()
+
+    row_num = 2
+    for sol in sols:
+        rutas = list(sol.rutas)
+        if not rutas:
+            continue
+        fill = alt_fill if row_num % 2 == 0 else PatternFill("solid", fgColor="1A1F27")
+        font = Font(color="E2E8F0", size=10)
+        for r in rutas:
+            row = [
+                sol.folio, sol.cliente, sol.tema, sol.subtipo or '',
+                sol.hunter.nombre if sol.hunter else '',
+                r.orden,
+                r.origen_estado, r.origen_ciudad,
+                r.destino_estado, r.destino_ciudad,
+                r.tipo_servicio, r.tipo_unidad or '',
+                r.peso_kg or '',
+                r.kg_por_entrega or '', r.m3_por_entrega or '',
+                r.temperatura or '', r.custodia or '',
+                r.comentarios or ''
+            ]
+            for col, val in enumerate(row, 1):
+                cell = ws.cell(row=row_num, column=col, value=val)
+                cell.font = font; cell.fill = fill
+                cell.border = cell_border
+                cell.alignment = Alignment(vertical="center")
+            row_num += 1
+
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    fecha = cdmx_now().strftime('%Y%m%d_%H%M')
+    return Response(buf.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename=RutasTransporte_{fecha}.xlsx'})
 
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])
@@ -1054,9 +1174,10 @@ def exportar_solicitudes():
         "Monto Oportunidad", "Días Captura", "Días Sin Mov.",
         "Fecha Compromiso", "Fecha Envío Cliente", "Fecha Cierre",
         "Hist. Surtido", "Inventario", "Maestro Prod.", "Hist. Recepción", "Cuestionario Log.",
-        "Rutas Transporte", "Orígenes", "Destinos", "Tipos Servicio", "Unidades", "Pesos", "Temperaturas", "Custodias"
+        "# Rutas", "Orígenes", "Destinos", "Tipos Servicio", "Unidades",
+        "Peso (kg)", "Kg/Entrega (LTL)", "M3/Entrega (LTL)", "Temperaturas", "Custodias"
     ]
-    col_widths = [16,16,16,28,22,12,22,22,10,24,18,12,12,16,18,14,14,12,14,15,16,12,30,30,22,20,18,18,18]
+    col_widths = [16,16,16,28,22,12,22,22,10,24,18,12,12,16,18,14,14,12,14,15,16,8,32,32,22,20,12,14,14,18,18]
 
     ws.row_dimensions[1].height = 30
     for col_num, (header, width) in enumerate(zip(headers, col_widths), 1):
@@ -1098,7 +1219,9 @@ def exportar_solicitudes():
             ' | '.join(r.destino for r in rutas),
             ' | '.join(r.tipo_servicio for r in rutas),
             ' | '.join(r.tipo_unidad or '' for r in rutas),
-            ' | '.join(r.peso_aprox or '' for r in rutas),
+            ' | '.join(str(r.peso_kg or '') for r in rutas),
+            ' | '.join(str(r.kg_por_entrega or '') for r in rutas),
+            ' | '.join(str(r.m3_por_entrega or '') for r in rutas),
             ' | '.join(r.temperatura or '' for r in rutas),
             ' | '.join(r.custodia or '' for r in rutas),
         ]
