@@ -656,7 +656,7 @@
                   <label class="form-label">Tipo de unidad</label>
                   <select name="ruta_tipo_unidad[]" class="form-select form-select-sm">
                     <option value="">— Selecciona —</option>
-                    {% for t in ['Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'] %}
+                    {% for t in ['1.5 Ton','3.5 Ton','Rabón','Torton','Trailer','No aplica'] %}
                     <option value="{{ t }}" {% if r.tipo_unidad == t %}selected{% endif %}>{{ t }}</option>
                     {% endfor %}
                   </select>
@@ -727,7 +727,7 @@ document.querySelectorAll('.nav-tab-link').forEach(el => {
 <script>
 // ── Editor de rutas en modal ──────────────────────────────
 const TIPOS_SVC  = ['FTL','LTL','Mensajería'];
-const TIPOS_UNI  = ['','Pick up','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
+const TIPOS_UNI  = ['','1.5 Ton','3.5 Ton','Rabón','Torton','Trailer','No aplica'];
 const TEMPS      = ['','Ambiente','Refrigerado 2–8°C','Congelado -20°C','Ultracongelado -70°C','Otro'];
 const CUSTODIAS  = ['No aplica','Custodia sencilla','Custodia armada'];
 
