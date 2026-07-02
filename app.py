@@ -255,8 +255,12 @@ def dashboard():
     pct_cumplimiento = round(len(cumplidas)/len(con_compromiso)*100) if con_compromiso else None
 
     # KPI Calidad de info comercial — promedio de checkboxes completados
+    def _calidad(s):
+        checks = [s.historial_surtido, s.inventario, s.maestro_productos,
+                  s.historial_recepcion, s.cuestionario_logistico]
+        return round(sum(1 for c in checks if c) / len(checks) * 100)
     con_info = [s for s in todas if s.estatus not in ('Asignada',)]
-    calidad_promedio = round(sum(s.calidad_info for s in con_info)/len(con_info)) if con_info else None
+    calidad_promedio = round(sum(_calidad(s) for s in con_info)/len(con_info)) if con_info else None
 
     # Tiempo promedio por estatus (cuello de botella)
     ESTATUS_FLOW = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
@@ -1240,6 +1244,38 @@ def subir_propuesta_final(folio):
     db.session.commit()
     flash(f'Propuesta final v{version} subida correctamente.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
+
+
+@app.route('/admin/debug-startup')
+@login_required
+@rol_requerido('administrador')
+def debug_startup():
+    """Ruta temporal para diagnosticar errores de startup."""
+    from sqlalchemy import text, inspect
+    results = {}
+    try:
+        with db.engine.connect() as conn:
+            # Check tables exist
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            results['tables'] = tables
+
+            # Check columns in solicitudes
+            if 'solicitudes' in tables:
+                cols = [c['name'] for c in inspector.get_columns('solicitudes')]
+                results['solicitudes_cols'] = cols
+
+            # Check solicitud_ingenieros
+            if 'solicitud_ingenieros' in tables:
+                cols_si = [c['name'] for c in inspector.get_columns('solicitud_ingenieros')]
+                results['solicitud_ingenieros_cols'] = cols_si
+            else:
+                results['solicitud_ingenieros'] = 'TABLE MISSING'
+
+    except Exception as e:
+        results['error'] = str(e)
+
+    return jsonify(results)
 
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])
