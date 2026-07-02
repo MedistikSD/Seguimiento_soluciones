@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from functools import wraps
-from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud, RutaTransporte, cdmx_now
+from models import db, User, Solicitud, Comentario, Bitacora, Documento, TemasSolicitud, RutaTransporte, SolicitudIngeniero, cdmx_now
 import os, uuid, csv, io, zipfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -38,6 +38,16 @@ with app.app_context():
                 "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_sugerida INTEGER",
                 "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_comercial INTEGER",
                 "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad_estado VARCHAR(20) DEFAULT 'pendiente'",
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS solicitud_origen_id INTEGER",
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS fecha_info_completa TIMESTAMP",
+                "ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS dias_analisis INTEGER",
+                """CREATE TABLE IF NOT EXISTS solicitud_ingenieros (
+                    id SERIAL PRIMARY KEY,
+                    solicitud_id INTEGER REFERENCES solicitudes(id),
+                    ingeniero_id INTEGER REFERENCES users(id),
+                    es_principal BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )""",
                 """CREATE TABLE IF NOT EXISTS rutas_transporte (
                     id SERIAL PRIMARY KEY,
                     solicitud_id INTEGER REFERENCES solicitudes(id),
@@ -230,7 +240,7 @@ def dashboard():
 
     todas = q.all()
     # Propuesta Enviada se trata como cerrada
-    ESTATUS_CERRADO = ('Cerrada', 'Propuesta Enviada')
+    ESTATUS_CERRADO = ('Cerrada', 'Enviada')
     abiertas    = [s for s in todas if s.estatus not in ESTATUS_CERRADO]
     cerradas    = [s for s in todas if s.estatus in ESTATUS_CERRADO]
     vencidas    = [s for s in todas if s.dias_sin_movimiento() > 15 and s.estatus not in ESTATUS_CERRADO]
@@ -239,29 +249,56 @@ def dashboard():
     tiempos = [s.dias_desde_captura() for s in cerradas]
     promedio_atencion = round(sum(tiempos)/len(tiempos), 1) if tiempos else 0
 
-    estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
-                    'Información Completa','Propuesta Enviada','Cerrada']
+    # KPI Cumplimiento — solicitudes que llegaron a Info Completa antes de fecha compromiso
+    con_compromiso = [s for s in todas if s.fecha_info_completa and s.fecha_compromiso]
+    cumplidas = [s for s in con_compromiso if s.fecha_info_completa.date() <= s.fecha_compromiso]
+    pct_cumplimiento = round(len(cumplidas)/len(con_compromiso)*100) if con_compromiso else None
+
+    # KPI Calidad de info comercial — promedio de checkboxes completados
+    con_info = [s for s in todas if s.estatus not in ('Asignada',)]
+    calidad_promedio = round(sum(s.calidad_info for s in con_info)/len(con_info)) if con_info else None
+
+    # Tiempo promedio por estatus (cuello de botella)
+    ESTATUS_FLOW = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
+                    'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
+                    'Liberada','Enviada','Cerrada']
+
+    estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
+                    'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
+                    'Liberada','Enviada','Cerrada']
 
     # Donut y gráficas respetan los filtros activos
     por_estatus = {e: len([s for s in todas if s.estatus == e]) for e in estatus_list}
 
     por_comercial_monto = {}
+    por_comercial_count = {}
     por_ingeniero_monto = {}
+    por_ingeniero_data  = {}
     if es_lider():
         from collections import defaultdict
         com_montos = defaultdict(float)
-        ing_montos = defaultdict(float)
+        com_counts = defaultdict(int)
+        ing_data   = defaultdict(lambda: {'count':0,'monto_total':0,'solicitudes':[]})
         for s in todas:
             if s.estatus not in ESTATUS_CERRADO:
                 monto = s.monto_oportunidad or 0
                 if s.hunter:
                     com_montos[s.hunter.nombre] += monto
+                    com_counts[s.hunter.nombre] += 1
                 if s.responsable and s.responsable.rol == 'ingeniero':
-                    ing_montos[s.responsable.nombre] += monto
+                    key = s.responsable.nombre
+                    ing_data[key]['count'] += 1
+                    ing_data[key]['monto_total'] += monto
+                    ing_data[key]['solicitudes'].append({
+                        'folio': s.folio, 'cliente': s.cliente, 'monto': monto
+                    })
         por_comercial_monto = {k: round(v) for k, v in
             sorted(com_montos.items(), key=lambda x: x[1], reverse=True) if v}
-        por_ingeniero_monto = {k: round(v) for k, v in
-            sorted(ing_montos.items(), key=lambda x: x[1], reverse=True) if v}
+        por_comercial_count = {k: com_counts[k] for k in por_comercial_monto}
+        por_ingeniero_monto = {k: round(d['monto_total']) for k, d in
+            sorted(ing_data.items(), key=lambda x: x[1]['count'], reverse=True) if d['count']}
+        por_ingeniero_data  = dict(sorted(ing_data.items(),
+            key=lambda x: x[1]['count'], reverse=True))
 
     ultimas = sorted(todas, key=lambda s: s.ultima_actualizacion or s.fecha_captura, reverse=True)[:5]
     comerciales_list = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial'])).all()
@@ -278,6 +315,10 @@ def dashboard():
         estatus_list=estatus_list,
         comerciales_list=comerciales_list,
         temas_list=temas_list,
+        pct_cumplimiento=pct_cumplimiento,
+        calidad_promedio=calidad_promedio,
+        por_comercial_count=por_comercial_count,
+        por_ingeniero_data=por_ingeniero_data,
         f_estatus=f_estatus, f_comercial=f_comercial, f_tema=f_tema)
 
 
@@ -313,8 +354,9 @@ def solicitudes():
 
     lista      = q.order_by(Solicitud.fecha_captura.desc()).all()
     ingenieros = User.query.filter_by(rol='ingeniero', activo=True).all()
-    estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
-                    'Información Completa','Propuesta Enviada','Cerrada']
+    estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
+                    'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
+                    'Liberada','Enviada','Cerrada']
     return render_template('solicitudes.html', solicitudes=lista,
                            ingenieros=ingenieros, estatus_list=estatus_list,
                            temas_list=get_temas())
@@ -352,32 +394,43 @@ def nueva_solicitud():
         # Auto-asignación por menor carga de trabajo
         responsable_id = asignar_ingeniero_automatico()
 
-        # Prioridad sugerida por comercial
-        prio_sug = f.get('prioridad_sugerida','').strip()
-        try:
-            prio_sug = int(prio_sug) if prio_sug else None
-        except ValueError:
-            prio_sug = None
+        prio_sug = None  # Prioridad asignada por Líder de Soluciones
+
+        origen_id = f.get('solicitud_origen_id','').strip()
+        origen_id = int(origen_id) if origen_id else None
 
         sol = Solicitud(
             folio=generar_folio(),
             hunter_id=int(f.get('hunter_id', current_user.id)),
             responsable_id=responsable_id,
+            solicitud_origen_id=origen_id,
             fecha_solicitud=fecha_sol,
             cliente=f['cliente'].strip(),
             tema=f['tema'].strip(),
             subtipo=subtipo,
             comentarios_comerciales=f.get('comentarios_comerciales','').strip(),
-            monto_oportunidad=float(f['monto_oportunidad']) if f.get('monto_oportunidad') else None,
-            prioridad_sugerida=prio_sug,
+            monto_oportunidad=float(f['monto_oportunidad'].replace(',','')) if f.get('monto_oportunidad') else None,
+            prioridad_sugerida=None,
             prioridad_comercial=None,
             prioridad=None,
             prioridad_estado='pendiente',
-            estatus='Asignada' if responsable_id else 'Capturada',
+            estatus='Asignada' if responsable_id else 'Asignada',
         )
         db.session.add(sol)
         db.session.flush()
         registrar_bitacora(sol.id, f'{current_user.nombre} creó la solicitud.')
+        # Registrar ingeniero principal en tabla intermedia
+        if responsable_id:
+            db.session.add(SolicitudIngeniero(
+                solicitud_id=sol.id,
+                ingeniero_id=responsable_id,
+                es_principal=True
+            ))
+        # Si se liga a solicitud cerrada, copiar rutas
+        if origen_id:
+            sol_origen = Solicitud.query.get(origen_id)
+            if sol_origen:
+                registrar_bitacora(sol.id, f'Retrabajo ligado a {sol_origen.folio}.')
 
         # Rutas de transporte (solo si el tema incluye transporte)
         tema_lower = sol.tema.lower()
@@ -464,8 +517,9 @@ def detalle_solicitud(folio):
             flash('No tienes acceso a esta solicitud.', 'danger')
             return redirect(url_for('solicitudes'))
     ingenieros   = User.query.filter_by(rol='ingeniero', activo=True).all()
-    estatus_list = ['Capturada','Asignada','En Análisis','Pendiente Información Cliente',
-                    'Información Completa','Propuesta Enviada','Cerrada']
+    estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
+                    'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
+                    'Liberada','Enviada','Cerrada']
     return render_template('detalle_solicitud.html', sol=sol,
                            ingenieros=ingenieros, estatus_list=estatus_list)
 
@@ -527,8 +581,11 @@ def registrar_envio(folio):
     sol.fecha_envio_cliente  = cdmx_now()
     sol.usuario_envio_id     = current_user.id
     sol.comentarios_envio    = request.form['comentarios_envio'].strip()
-    sol.estatus              = 'Propuesta Enviada'
+    sol.estatus              = 'Enviada'
     sol.ultima_actualizacion = cdmx_now()
+    # Calcular días de análisis
+    if sol.fecha_info_completa:
+        sol.dias_analisis = (cdmx_now() - sol.fecha_info_completa).days
     registrar_bitacora(sol.id, f'{current_user.nombre} registró envío de propuesta al cliente.')
     db.session.commit()
     flash('Envío registrado exitosamente.', 'success')
@@ -778,13 +835,32 @@ def admin_toggle_usuario(uid):
 
 # ── Documentos ────────────────────────────────────────────────────────────────
 def puede_subir_doc(tipo):
-    if current_user.rol in ('administrador','lider_comercial','lider_soluciones','aux_comercial'):
+    if current_user.rol == 'administrador':
         return True
-    if tipo == 'comercial' and current_user.rol == 'comercial':
+    if tipo in ('comercial',) and current_user.rol in ('comercial','lider_comercial','aux_comercial'):
         return True
-    if tipo == 'soluciones' and current_user.rol == 'ingeniero':
+    if tipo == 'soluciones' and current_user.rol in ('ingeniero','lider_soluciones','aux_comercial','lider_comercial'):
+        return True
+    if tipo == 'propuesta_final' and current_user.rol in ('comercial','lider_comercial'):
+        return True
+    if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial'):
         return True
     return False
+
+LIMITE_PROPUESTA = 6  # Versiones máximas de propuesta final
+
+def puede_subir_propuesta_final(sol):
+    """Verifica si se puede subir una versión más de propuesta final."""
+    activas = Documento.query.filter_by(
+        solicitud_id=sol.id, tipo_documento='propuesta_final', activo=True).count()
+    historico = Documento.query.filter_by(
+        solicitud_id=sol.id, tipo_documento='propuesta_final').count()
+    if historico < LIMITE_PROPUESTA:
+        return True, None
+    # Over limit — only lider_comercial can authorize
+    if current_user.rol in ('lider_comercial','administrador'):
+        return True, 'autorizado_lider'
+    return False, 'limite'
 
 
 @app.route('/solicitudes/<folio>/documentos/subir', methods=['POST'])
@@ -1066,6 +1142,104 @@ def exportar_rutas():
     fecha = cdmx_now().strftime('%Y%m%d_%H%M')
     return Response(buf.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename=RutasTransporte_{fecha}.xlsx'})
+
+
+@app.route('/solicitudes/<folio>/ingenieros/agregar', methods=['POST'])
+@login_required
+@rol_requerido('lider_soluciones','administrador')
+def agregar_ingeniero(folio):
+    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+    ing_id = request.form.get('ingeniero_id','').strip()
+    if not ing_id:
+        flash('Selecciona un ingeniero.', 'warning')
+        return redirect(url_for('detalle_solicitud', folio=folio))
+    ing_id = int(ing_id)
+    # Check not already assigned
+    ya = SolicitudIngeniero.query.filter_by(solicitud_id=sol.id, ingeniero_id=ing_id).first()
+    if ya:
+        flash('Ese ingeniero ya está asignado.', 'warning')
+        return redirect(url_for('detalle_solicitud', folio=folio))
+    db.session.add(SolicitudIngeniero(solicitud_id=sol.id, ingeniero_id=ing_id, es_principal=False))
+    ing = db.session.get(User, ing_id)
+    sol.ultima_actualizacion = cdmx_now()
+    registrar_bitacora(sol.id, f'{current_user.nombre} agregó a {ing.nombre} como ingeniero colaborador.')
+    db.session.commit()
+    flash(f'{ing.nombre} agregado como colaborador.', 'success')
+    return redirect(url_for('detalle_solicitud', folio=folio))
+
+
+@app.route('/solicitudes/<folio>/ingenieros/<int:si_id>/quitar', methods=['POST'])
+@login_required
+@rol_requerido('lider_soluciones','administrador')
+def quitar_ingeniero(folio, si_id):
+    asig = db.session.get(SolicitudIngeniero, si_id)
+    if not asig or asig.es_principal:
+        flash('No puedes quitar al ingeniero principal desde aquí. Usa Reasignar.', 'warning')
+        return redirect(url_for('detalle_solicitud', folio=folio))
+    ing = db.session.get(User, asig.ingeniero_id)
+    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+    db.session.delete(asig)
+    sol.ultima_actualizacion = cdmx_now()
+    registrar_bitacora(sol.id, f'{current_user.nombre} quitó a {ing.nombre} de la solicitud.')
+    db.session.commit()
+    flash(f'{ing.nombre} quitado de la solicitud.', 'success')
+    return redirect(url_for('detalle_solicitud', folio=folio))
+
+
+@app.route('/api/solicitudes-cerradas')
+@login_required
+def api_solicitudes_cerradas():
+    """API para buscar solicitudes cerradas — usado en formulario de retrabajo."""
+    q = request.args.get('q','').strip()
+    sols = Solicitud.query.filter(
+        Solicitud.estatus == 'Cerrada',
+        db.or_(
+            Solicitud.folio.ilike(f'%{q}%'),
+            Solicitud.cliente.ilike(f'%{q}%')
+        )
+    ).limit(10).all()
+    return jsonify([{
+        'id': s.id, 'folio': s.folio, 'cliente': s.cliente,
+        'tema': s.tema, 'subtipo': s.subtipo or '',
+        'monto': s.monto_oportunidad or 0,
+        'comentarios': s.comentarios_comerciales or ''
+    } for s in sols])
+
+
+@app.route('/solicitudes/<folio>/propuesta-final/subir', methods=['POST'])
+@login_required
+def subir_propuesta_final(folio):
+    sol = Solicitud.query.filter_by(folio=folio).first_or_404()
+    puede, razon = puede_subir_propuesta_final(sol)
+    if not puede:
+        flash(f'Límite de {LIMITE_PROPUESTA} versiones alcanzado. Solicita autorización al Líder Comercial.', 'danger')
+        return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
+    if not current_user.rol in ('comercial','lider_comercial','administrador'):
+        flash('Sin permiso.', 'danger')
+        return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
+
+    archivo = request.files.get('archivo')
+    if not archivo or archivo.filename == '' or not allowed_file(archivo.filename):
+        flash('Archivo inválido.', 'danger')
+        return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
+
+    nombre_original = secure_filename(archivo.filename)
+    ext = nombre_original.rsplit('.', 1)[1].lower()
+    nombre_guardado = f"{uuid.uuid4().hex}.{ext}"
+    archivo.save(os.path.join(get_upload_path(folio, 'propuesta_final'), nombre_guardado))
+
+    version = Documento.query.filter_by(
+        solicitud_id=sol.id, tipo_documento='propuesta_final').count() + 1
+    db.session.add(Documento(
+        solicitud_id=sol.id, nombre_original=nombre_original,
+        nombre_guardado=nombre_guardado, tipo_documento='propuesta_final',
+        usuario_id=current_user.id, version=version, activo=True,
+    ))
+    msg_extra = ' [autorizado por líder]' if razon == 'autorizado_lider' else ''
+    registrar_bitacora(sol.id, f'{current_user.nombre} subió propuesta final v{version}: "{nombre_original}"{msg_extra}.')
+    db.session.commit()
+    flash(f'Propuesta final v{version} subida correctamente.', 'success')
+    return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
 
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])

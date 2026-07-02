@@ -110,6 +110,27 @@
     </div>
   </div>
 </div>
+<!-- KPIs fila 3 — calidad y cumplimiento -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon"><i class="bi bi-patch-check"></i></div>
+      <div class="kpi-value">
+        {% if pct_cumplimiento is not none %}{{ pct_cumplimiento }}%{% else %}<span style="font-size:18px">N/A</span>{% endif %}
+      </div>
+      <div class="kpi-label">Cumplimiento Info</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-icon"><i class="bi bi-star-half"></i></div>
+      <div class="kpi-value">
+        {% if calidad_promedio is not none %}{{ calidad_promedio }}%{% else %}<span style="font-size:18px">N/A</span>{% endif %}
+      </div>
+      <div class="kpi-label">Calidad Info Comercial</div>
+    </div>
+  </div>
+</div>
 
 <!-- Gráficas -->
 <div class="row g-3 mb-4">
@@ -119,21 +140,57 @@
       <div class="chart-wrap"><canvas id="chartEstatus"></canvas></div>
     </div>
   </div>
-  {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') and por_comercial_monto %}
+  {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') %}
+  {% if por_comercial_monto %}
   <div class="col-lg-4">
     <div class="chart-card">
-      <div class="chart-title">Monto por Comercial</div>
-      <div class="chart-wrap"><canvas id="chartComercial"></canvas></div>
+      <div class="chart-title">Proyectos por Comercial</div>
+      <div class="chart-wrap"><canvas id="chartComercialCount"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="chart-card">
+      <div class="chart-title">Monto por Comercial (MXN)</div>
+      <div class="chart-wrap"><canvas id="chartComercialMonto"></canvas></div>
     </div>
   </div>
   {% endif %}
-  {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') and por_ingeniero_monto %}
-  <div class="col-lg-4">
+  {% if por_ingeniero_data %}
+  <div class="col-12">
     <div class="chart-card">
-      <div class="chart-title">Monto por Ingeniero</div>
-      <div class="chart-wrap"><canvas id="chartIngeniero"></canvas></div>
+      <div class="chart-title">Carga por Ingeniero — Proyectos y Montos</div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="font-size:13px">
+          <thead>
+            <tr>
+              <th>Ingeniero</th><th>Proyectos</th>
+              {% for s in por_ingeniero_data.solicitudes_sample | default([]) %}{% endfor %}
+              <th>Proyectos activos</th><th>Monto total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ing, data in por_ingeniero_data.items() %}
+            <tr>
+              <td class="fw-semibold">{{ ing }}</td>
+              <td><span class="prioridad-num-badge">#{{ data.count }}</span></td>
+              <td>
+                {% for sol in data.solicitudes %}
+                <div style="font-size:11px;color:var(--text-secondary)">
+                  <span class="folio-badge" style="font-size:9px">{{ sol.folio }}</span>
+                  {{ sol.cliente }}
+                  <span style="color:var(--verde);margin-left:4px">${{ "{:,.0f}".format(sol.monto or 0) }}</span>
+                </div>
+                {% endfor %}
+              </td>
+              <td class="fw-bold" style="color:var(--verde)">${{ "{:,.0f}".format(data.monto_total) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
+  {% endif %}
   {% endif %}
 </div>
 
@@ -206,6 +263,7 @@ estatusRaw.forEach((label, i) => {
   }
 });
 
+const totalSolicitudes = estatusDatos.reduce((a,b)=>a+b,0);
 new Chart(document.getElementById('chartEstatus'), {
   type: 'doughnut',
   data: {
@@ -216,39 +274,46 @@ new Chart(document.getElementById('chartEstatus'), {
   options: { responsive:true, maintainAspectRatio:false,
     plugins: {
       legend: { position:'bottom', labels:{ padding:10, font:{size:11} } },
-      tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } }
+      tooltip: { callbacks: {
+        label: ctx => {
+          const pct = totalSolicitudes > 0 ? Math.round(ctx.raw/totalSolicitudes*100) : 0;
+          return ` ${ctx.label}: ${ctx.raw} (${pct}%)`;
+        }
+      }},
+      datalabels: false
     }
   }
 });
 {% endif %}
 
 {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') and por_comercial_monto %}
-new Chart(document.getElementById('chartComercial'), {
+// Gráfica conteo proyectos por comercial
+new Chart(document.getElementById('chartComercialCount'), {
   type: 'bar',
   data: {
-    labels: {{ por_comercial_monto.keys()|list|tojson }},
-    datasets: [{ label: 'Monto MXN', data: {{ por_comercial_monto.values()|list|tojson }},
+    labels: {{ por_comercial_count.keys()|list|tojson }},
+    datasets: [{ label: 'Proyectos', data: {{ por_comercial_count.values()|list|tojson }},
       backgroundColor: '#4BB8C8', borderRadius: 6 }]
   },
   options: { responsive:true, maintainAspectRatio:false,
     plugins: { legend:{display:false},
-      tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toLocaleString('es-MX') } } },
-    scales: { y: { beginAtZero:true, ticks:{ callback: v => fmtMXN(v) } } } }
+      tooltip: { callbacks: { label: ctx => ` ${ctx.raw} proyecto${ctx.raw!==1?'s':''}` } } },
+    scales: { y: { beginAtZero:true, ticks:{ stepSize:1 } } }
+  }
 });
-{% endif %}
-
-{% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') and por_ingeniero_monto %}
-new Chart(document.getElementById('chartIngeniero'), {
+// Gráfica monto por comercial
+new Chart(document.getElementById('chartComercialMonto'), {
   type: 'bar',
   data: {
-    labels: {{ por_ingeniero_monto.keys()|list|tojson }},
-    datasets: [{ label: 'Monto MXN', data: {{ por_ingeniero_monto.values()|list|tojson }},
-      backgroundColor: '#AECA00', borderRadius: 6 }]
+    labels: {{ por_comercial_monto.keys()|list|tojson }},
+    datasets: [{ label: 'Monto MXN', data: {{ por_comercial_monto.values()|list|tojson }},
+      backgroundColor: '#2E9BAA', borderRadius: 6 }]
   },
-  options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+  options: { responsive:true, maintainAspectRatio:false,
     plugins: { legend:{display:false},
       tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toLocaleString('es-MX') } } },
-    scales: { x: { beginAtZero:true, ticks:{ callback: v => fmtMXN(v) } } } }
+    scales: { y: { beginAtZero:true, ticks:{ callback: v => fmtMXN(v) } } }
+  }
 });
 {% endif %}
 </script>

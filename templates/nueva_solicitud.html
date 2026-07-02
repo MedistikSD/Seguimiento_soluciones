@@ -34,6 +34,29 @@
           <input type="hidden" name="hunter_id" value="{{ current_user.id }}">
           {% endif %}
 
+          <!-- Ligar solicitud cerrada (retrabajo) -->
+          <div class="col-12">
+            <div class="retrabajo-box" id="retrabajoBox">
+              <div class="d-flex align-items-center gap-2 mb-0">
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" id="switchRetrabajo"
+                         onchange="toggleRetrabajo(this.checked)">
+                  <label class="form-check-label fw-semibold" for="switchRetrabajo">
+                    <i class="bi bi-arrow-repeat me-1" style="color:var(--warning)"></i>
+                    Retrabajo — ligar a solicitud cerrada
+                  </label>
+                </div>
+              </div>
+              <div id="retrababjoPanel" style="display:none;margin-top:12px">
+                <input type="text" id="buscarSolCerrada" class="form-control form-control-sm"
+                       placeholder="Busca por folio o cliente…" autocomplete="off">
+                <div id="resultadosSolCerrada" class="retrabajo-results"></div>
+                <input type="hidden" name="solicitud_origen_id" id="solOrigenId">
+                <div id="solSeleccionada" class="retrabajo-seleccionada" style="display:none"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="col-md-6">
             <label class="form-label required">Fecha de solicitud</label>
             <input type="date" name="fecha_solicitud" id="fechaSolicitud" class="form-control" required>
@@ -79,23 +102,12 @@
             </label>
             <div class="input-group">
               <span class="input-group-text">$</span>
-              <input type="number" name="monto_oportunidad" class="form-control"
-                     placeholder="0" min="0" step="1000">
+              <input type="text" name="monto_oportunidad" id="montoInput" class="form-control"
+                     placeholder="0" autocomplete="off" inputmode="numeric">
             </div>
           </div>
 
-          <div class="col-md-6">
-            <label class="form-label">
-              Prioridad sugerida
-              <span class="text-muted fw-normal small">(tú propones, el líder confirma)</span>
-            </label>
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi bi-sort-numeric-up"></i></span>
-              <input type="number" name="prioridad_sugerida" class="form-control"
-                     min="1" step="1" placeholder="Ej. 1, 2, 3…">
-            </div>
-            <div class="form-text">Número de orden de urgencia. El Líder Comercial la confirma.</div>
-          </div>
+
 
           <!-- ── RUTAS DE TRANSPORTE (condicional) ─────────────── -->
           <div class="col-12" id="seccionRutas" style="display:none;">
@@ -224,6 +236,82 @@ const hoy = new Date().toISOString().split('T')[0];
 const inputFecha = document.getElementById('fechaSolicitud');
 inputFecha.min = hoy;
 inputFecha.value = hoy;
+
+// ── Formato moneda en monto ───────────────────────────────
+const montoInput = document.getElementById('montoInput');
+if (montoInput) {
+  montoInput.addEventListener('input', function() {
+    let v = this.value.replace(/[^0-9]/g,'');
+    this.value = v ? parseInt(v).toLocaleString('es-MX') : '';
+  });
+}
+
+// ── Retrabajo: ligar solicitud cerrada ────────────────────
+function toggleRetrabajo(on) {
+  document.getElementById('retrababjoPanel').style.display = on ? 'block' : 'none';
+  if (!on) {
+    document.getElementById('solOrigenId').value = '';
+    document.getElementById('solSeleccionada').style.display = 'none';
+    document.getElementById('buscarSolCerrada').value = '';
+    document.getElementById('resultadosSolCerrada').innerHTML = '';
+  }
+}
+
+let retrabajoTimer;
+document.getElementById('buscarSolCerrada')?.addEventListener('input', function() {
+  clearTimeout(retrabajoTimer);
+  const q = this.value.trim();
+  if (q.length < 2) { document.getElementById('resultadosSolCerrada').innerHTML=''; return; }
+  retrabajoTimer = setTimeout(async () => {
+    const res = await fetch(`/api/solicitudes-cerradas?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const el = document.getElementById('resultadosSolCerrada');
+    if (!data.length) { el.innerHTML='<div class="retrabajo-no-result">Sin resultados</div>'; return; }
+    el.innerHTML = data.map(s => `
+      <div class="retrabajo-item" onclick="seleccionarSolCerrada(${s.id},'${s.folio}','${s.cliente}','${s.tema}','${s.subtipo}',${s.monto},'${s.comentarios.replace(/'/g,"\'")}')">
+        <span class="folio-badge" style="font-size:10px">${s.folio}</span>
+        <strong>${s.cliente}</strong>
+        <span class="text-muted ms-2" style="font-size:12px">${s.tema}${s.subtipo?' · '+s.subtipo:''}</span>
+        <span class="ms-auto" style="color:var(--verde);font-size:12px">$${s.monto.toLocaleString('es-MX')}</span>
+      </div>`).join('');
+  }, 350);
+});
+
+function seleccionarSolCerrada(id, folio, cliente, tema, subtipo, monto, comentarios) {
+  document.getElementById('solOrigenId').value = id;
+  document.getElementById('resultadosSolCerrada').innerHTML = '';
+  document.getElementById('buscarSolCerrada').value = '';
+  // Show selection
+  const el = document.getElementById('solSeleccionada');
+  el.innerHTML = `<i class="bi bi-check-circle me-1" style="color:var(--verde)"></i>
+    <strong>${folio}</strong> — ${cliente}
+    <button type="button" class="btn btn-xs btn-outline-danger ms-2" onclick="limpiarRetrabajo()">✕</button>`;
+  el.style.display = 'flex';
+  // Pre-fill form fields
+  const clienteEl = document.querySelector('input[name="cliente"]');
+  if (clienteEl) clienteEl.value = cliente;
+  // Set tema
+  const temaEl = document.getElementById('selectTema');
+  if (temaEl) {
+    for (let opt of temaEl.options) { if (opt.value === tema) { temaEl.value = tema; break; } }
+    temaEl.dispatchEvent(new Event('change'));
+  }
+  // Set subtipo
+  setTimeout(() => {
+    const subEl = document.getElementById('selectSubtipo');
+    if (subEl && subtipo) { subEl.value = subtipo; }
+  }, 100);
+  // Set monto
+  if (montoInput && monto) montoInput.value = parseInt(monto).toLocaleString('es-MX');
+  // Set comentarios
+  const comEl = document.querySelector('textarea[name="comentarios_comerciales"]');
+  if (comEl) comEl.value = comentarios;
+}
+
+function limpiarRetrabajo() {
+  document.getElementById('solOrigenId').value = '';
+  document.getElementById('solSeleccionada').style.display = 'none';
+}
 
 // Mostrar/ocultar subtipo según el tema
 const selectTema   = document.getElementById('selectTema');

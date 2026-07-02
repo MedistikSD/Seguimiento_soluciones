@@ -49,13 +49,14 @@ class Solicitud(db.Model):
     tema          = db.Column(db.String(300), nullable=False)
     comentarios_comerciales = db.Column(db.Text, nullable=True)
     monto_oportunidad = db.Column(db.Float, nullable=True)
-    subtipo       = db.Column(db.String(10), nullable=True)   # RFQ, RFI, RFP (solo si tema incluye transporte/almacenaje)
+    subtipo             = db.Column(db.String(10),  nullable=True)   # RFQ, RFI, RFP
+    solicitud_origen_id = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=True)  # Retrabajo: ligada a solicitud cerrada
 
-    # Flujo de prioridad en 3 pasos
-    prioridad_sugerida   = db.Column(db.Integer, nullable=True)  # Propuesta por comercial
-    prioridad_comercial  = db.Column(db.Integer, nullable=True)  # Confirmada por lider_comercial
-    prioridad            = db.Column(db.Integer, nullable=True)  # Confirmada final por lider_soluciones
-    prioridad_estado     = db.Column(db.String(20), default='pendiente')  # pendiente|confirmada_com|confirmada
+    # Prioridad — asignada directamente por Líder de Soluciones
+    prioridad_sugerida   = db.Column(db.Integer, nullable=True)  # DEPRECADO — mantenido por compatibilidad
+    prioridad_comercial  = db.Column(db.Integer, nullable=True)  # DEPRECADO — mantenido por compatibilidad
+    prioridad            = db.Column(db.Integer, nullable=True)  # Asignada por lider_soluciones
+    prioridad_estado     = db.Column(db.String(20), default='pendiente')
     estatus       = db.Column(db.String(40), nullable=False, default='Capturada')
     ultima_actualizacion = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -85,11 +86,18 @@ class Solicitud(db.Model):
                     self.cuestionario_logistico])
 
     def dias_sin_movimiento(self):
+        if self.estatus == 'Cerrada':
+            return 0
         ref = self.ultima_actualizacion or self.fecha_captura
         return (cdmx_now() - ref).days
 
     def dias_desde_captura(self):
         return (cdmx_now() - self.fecha_captura).days
+
+    # Relación con solicitud origen (retrabajo)
+    solicitud_origen = db.relationship('Solicitud', foreign_keys=[solicitud_origen_id],
+                                       remote_side='Solicitud.id',
+                                       backref=db.backref('retrabajos', lazy='dynamic'))
 
     def actualizar_estatus_automatico(self):
         if self.estatus == 'Cerrada':
@@ -141,6 +149,20 @@ class Documento(db.Model):
                                            backref=db.backref('padre', remote_side=[id]),
                                            lazy='dynamic')
 
+class SolicitudIngeniero(db.Model):
+    """Tabla intermedia para múltiples ingenieros por solicitud."""
+    __tablename__ = 'solicitud_ingenieros'
+    id            = db.Column(db.Integer, primary_key=True)
+    solicitud_id  = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
+    ingeniero_id  = db.Column(db.Integer, db.ForeignKey('users.id'),       nullable=False)
+    es_principal  = db.Column(db.Boolean, default=False)  # True = responsable principal
+    created_at    = db.Column(db.DateTime, default=utcnow)
+
+    solicitud = db.relationship('Solicitud', foreign_keys=[solicitud_id],
+                                backref=db.backref('ingenieros_asignados', lazy='dynamic'))
+    ingeniero = db.relationship('User', foreign_keys=[ingeniero_id])
+
+
 class RutaTransporte(db.Model):
     __tablename__ = 'rutas_transporte'
     id                = db.Column(db.Integer, primary_key=True)
@@ -166,6 +188,13 @@ class RutaTransporte(db.Model):
     solicitud = db.relationship('Solicitud', foreign_keys=[solicitud_id],
                                 backref=db.backref('rutas', lazy='dynamic',
                                                    order_by='RutaTransporte.orden'))
+
+    @property
+    def calidad_info(self):
+        """Porcentaje de checkboxes completados (0-100)."""
+        checks = [self.historial_surtido, self.inventario, self.maestro_productos,
+                  self.historial_recepcion, self.cuestionario_logistico]
+        return round(sum(1 for c in checks if c) / len(checks) * 100)
 
     @property
     def origen(self):
