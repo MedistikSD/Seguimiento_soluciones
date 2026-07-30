@@ -1754,9 +1754,16 @@ def fix_fechas_captura():
             break
         r = all_rows[i]
         fecha = pf(r[1])
+        # Fecha de entrega efectiva para ultima_actualizacion en cerradas
+        fecha_entrega = pf(r[8])
         if fecha:
-            sol.fecha_captura = fecha
-            sol.fecha_solicitud = fecha.date()
+            sol.fecha_captura        = fecha
+            sol.fecha_solicitud      = fecha.date()
+            # ultima_actualizacion = fecha entrega si cerrada, sino fecha solicitud
+            if sol.estatus == 'Cerrada' and fecha_entrega:
+                sol.ultima_actualizacion = fecha_entrega
+            else:
+                sol.ultima_actualizacion = fecha
             actualizadas += 1
         else:
             errores.append('Fila ' + str(i+2) + ': sin fecha — ' + str(r[2]))
