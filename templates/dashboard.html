@@ -17,14 +17,29 @@
 <!-- Filtros Dashboard -->
 <div class="filter-bar mb-4">
   <form method="GET" class="row g-2 align-items-end">
-    <div class="col-12 col-md-auto">
+    <div class="col-12 col-md-auto" style="position:relative">
       <label class="form-label mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary)">Estatus</label>
-      <select name="f_estatus" class="form-select form-select-sm">
-        <option value="">Todos</option>
-        {% for e in estatus_list %}
-        <option value="{{ e }}" {% if f_estatus == e %}selected{% endif %}>{{ e }}</option>
-        {% endfor %}
-      </select>
+      <!-- Multi-select dropdown -->
+      <div class="estatus-multi-wrap">
+        <button type="button" class="form-select form-select-sm text-start" id="btnEstatus"
+                onclick="toggleEstatus()" style="cursor:pointer">
+          {% if f_estatus_list %}
+            {{ f_estatus_list|length }} seleccionado(s)
+          {% else %}
+            Todos
+          {% endif %}
+        </button>
+        <div class="estatus-dropdown" id="estatusDropdown" style="display:none">
+          {% for e in estatus_list %}
+          <label class="estatus-opt {% if e in f_estatus_list %}active{% endif %}">
+            <input type="checkbox" name="f_estatus" value="{{ e }}"
+                   {% if e in f_estatus_list %}checked{% endif %}
+                   onchange="this.closest('label').classList.toggle('active',this.checked)">
+            {{ e }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') %}
     <div class="col-12 col-md-auto">
@@ -50,11 +65,11 @@
       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filtrar</button>
       <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
     </div>
-    {% if f_estatus or f_comercial or f_tema %}
+    {% if f_estatus_list or f_comercial or f_tema %}
     <div class="col-12">
       <small class="text-muted">
         <i class="bi bi-funnel-fill me-1" style="color:var(--turquesa)"></i>Filtros activos:
-        {% if f_estatus %}<span class="filter-chip">{{ f_estatus }}</span>{% endif %}
+        {% for e in f_estatus_list %}<span class="filter-chip">{{ e }}</span>{% endfor %}
         {% if f_comercial %}{% for c in comerciales_list %}{% if c.id|string == f_comercial %}<span class="filter-chip">{{ c.nombre }}</span>{% endif %}{% endfor %}{% endif %}
         {% if f_tema %}<span class="filter-chip">{{ f_tema }}</span>{% endif %}
       </small>
@@ -316,5 +331,19 @@ new Chart(document.getElementById('chartComercialMonto'), {
   }
 });
 {% endif %}
+</script>
+<script>
+// ── Multi-select estatus ──────────────────────────────────────
+function toggleEstatus() {
+  const dd = document.getElementById('estatusDropdown');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+// Close on click outside
+document.addEventListener('click', function(e) {
+  const wrap = document.querySelector('.estatus-multi-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('estatusDropdown').style.display = 'none';
+  }
+});
 </script>
 {% endblock %}

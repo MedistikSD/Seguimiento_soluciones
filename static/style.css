@@ -979,3 +979,26 @@ hr { border-color: var(--bg-border); opacity: 1; }
 /* ── INGENIERO TABLE DASHBOARD ───────────────── */
 .ing-sol-list { font-size: 11px; color: var(--text-secondary); }
 .ing-sol-list .folio-badge { font-size: 9px; padding: 1px 5px; }
+
+/* ── MULTI-SELECT ESTATUS ─────────────────────────────────── */
+.estatus-multi-wrap { position: relative; min-width: 180px; }
+.estatus-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 300;
+  background: var(--bg-card); border: 1px solid var(--bg-border);
+  border-radius: var(--radius); min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  max-height: 280px; overflow-y: auto;
+}
+.estatus-opt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; cursor: pointer; font-size: 13px;
+  color: var(--text-secondary); transition: background var(--transition);
+  border-bottom: 1px solid var(--bg-border);
+}
+.estatus-opt:last-child { border-bottom: none; }
+.estatus-opt:hover { background: var(--bg-hover); color: var(--text-primary); }
+.estatus-opt.active { color: var(--turquesa); background: rgba(75,184,200,.08); }
+.estatus-opt input[type=checkbox] {
+  width: 15px; height: 15px; flex-shrink: 0;
+  accent-color: var(--turquesa); cursor: pointer;
+}

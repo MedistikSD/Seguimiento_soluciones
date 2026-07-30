@@ -1716,14 +1716,6 @@ def init_db():
 
 
 
-@app.route('/admin/fix-fechas-captura')
-@login_required
-@rol_requerido('administrador')
-def fix_fechas_captura():
-    """Corrige fecha_captura usando fecha_solicitud en solicitudes históricas."""
-    from openpyxl import load_workbook
-    from datetime import datetime as dt, date
-
     def pf(v):
         if not v: return None
         if isinstance(v, dt): return v
@@ -1778,31 +1770,6 @@ def fix_fechas_captura():
             '<p>' + msg + '</p>'
             '<a href="/dashboard" style="color:#4BB8C8">Ir al Dashboard</a>'
             '</body></html>')
-
-@app.route('/admin/fix-folio')
-@login_required
-@rol_requerido('administrador')
-def fix_folio():
-    """Elimina folios corruptos generados por error de f-string."""
-    corruptos = Solicitud.query.filter(
-        Solicitud.folio.like('%{num%')
-    ).all()
-    n = len(corruptos)
-    for s in corruptos:
-        Bitacora.query.filter_by(solicitud_id=s.id).delete()
-        SolicitudIngeniero.query.filter_by(solicitud_id=s.id).delete()
-        db.session.delete(s)
-    db.session.commit()
-    return ('Eliminados ' + str(n) + ' folios corruptos. '
-            '<a href="/admin/carga-v2?paso=solicitudes&lote=0">Continuar carga</a>')
-
-@app.route('/admin/carga-v2')
-@login_required
-@rol_requerido('administrador')
-def carga_v2():
-    """Panel de carga en pasos — evita timeout de Render."""
-    paso = request.args.get('paso', 'menu')
-    lote = int(request.args.get('lote', 0))
 
     CSS = """<style>
     body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px;max-width:800px}
