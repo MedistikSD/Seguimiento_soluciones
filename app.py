@@ -248,11 +248,12 @@ def dashboard():
     # Todos los roles ven TODAS las solicitudes en el dashboard
 
     # Filtros dashboard
-    f_estatus  = request.args.get('f_estatus', '').strip()
+    f_estatus_list = request.args.getlist('f_estatus')  # múltiples valores
+    f_estatus  = f_estatus_list[0] if len(f_estatus_list)==1 else ''  # compatibilidad
     f_comercial= request.args.get('f_comercial', '').strip()
     f_tema     = request.args.get('f_tema', '').strip()
 
-    if f_estatus:   q = q.filter(Solicitud.estatus == f_estatus)
+    if f_estatus_list: q = q.filter(Solicitud.estatus.in_(f_estatus_list))
     if f_comercial: q = q.join(User, Solicitud.hunter_id == User.id).filter(User.id == int(f_comercial))
     if f_tema:      q = q.filter(Solicitud.tema == f_tema)
 
@@ -341,7 +342,8 @@ def dashboard():
         calidad_promedio=calidad_promedio,
         por_comercial_count=por_comercial_count,
         por_ingeniero_data=por_ingeniero_data,
-        f_estatus=f_estatus, f_comercial=f_comercial, f_tema=f_tema)
+        f_estatus=f_estatus, f_estatus_list=f_estatus_list,
+        f_comercial=f_comercial, f_tema=f_tema)
 
 
 # ── Solicitudes ──────────────────────────────────────────────────────────────
@@ -1712,6 +1714,63 @@ def init_db():
 # Pegar en app.py antes de if __name__
 # ELIMINAR después de completar la carga
 
+
+
+@app.route('/admin/fix-fechas-captura')
+@login_required
+@rol_requerido('administrador')
+def fix_fechas_captura():
+    """Corrige fecha_captura usando fecha_solicitud en solicitudes históricas."""
+    from openpyxl import load_workbook
+    from datetime import datetime as dt, date
+
+    def pf(v):
+        if not v: return None
+        if isinstance(v, dt): return v
+        if isinstance(v, date): return dt.combine(v, dt.min.time())
+        for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y'):
+            try: return dt.strptime(str(v).strip(), fmt)
+            except: pass
+        return None
+
+    wb = load_workbook('/opt/render/project/src/carga_inicial_data.xlsx', data_only=True)
+    ws = wb['Soluciones']
+    all_rows = []
+    for row in range(2, ws.max_row+1):
+        vals = [ws.cell(row,c).value for c in range(1,26)]
+        if any(vals[:5]):
+            all_rows.append(vals)
+
+    # Match by cliente + tema (order matches insertion order)
+    sols = (Solicitud.query
+            .filter(Solicitud.folio.like('SOL-2026-%'))
+            .order_by(Solicitud.id.asc()).all())
+
+    actualizadas = 0
+    errores = []
+
+    for i, sol in enumerate(sols):
+        if i >= len(all_rows):
+            break
+        r = all_rows[i]
+        fecha = pf(r[1])
+        if fecha:
+            sol.fecha_captura = fecha
+            sol.fecha_solicitud = fecha.date()
+            actualizadas += 1
+        else:
+            errores.append('Fila ' + str(i+2) + ': sin fecha — ' + str(r[2]))
+
+    db.session.commit()
+
+    msg = ('Actualizadas: ' + str(actualizadas) + ' solicitudes.<br>')
+    if errores:
+        msg += 'Sin fecha: ' + ', '.join(errores[:5])
+    return ('<html><body style="font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px">'
+            '<h2 style="color:#4BB8C8">Fechas corregidas</h2>'
+            '<p>' + msg + '</p>'
+            '<a href="/dashboard" style="color:#4BB8C8">Ir al Dashboard</a>'
+            '</body></html>')
 
 @app.route('/admin/fix-folio')
 @login_required
