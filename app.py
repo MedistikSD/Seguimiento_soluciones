@@ -21,6 +21,13 @@ elif _db_url.startswith('postgresql://'):
     _db_url = _db_url.replace('postgresql://', 'postgresql+psycopg://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 280,
+    'pool_timeout': 20,
+    'pool_size': 5,
+    'max_overflow': 2,
+}
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 UPLOAD_BASE = os.path.join(os.path.dirname(__file__), 'uploads')
 ALLOWED_EXTENSIONS = {'pdf','xlsx','xls','pptx','docx','png','jpg','jpeg','zip'}
