@@ -1708,6 +1708,214 @@ def init_db():
         print('✅ Base de datos inicializada con usuarios y temas.')
 
 
+# Ruta temporal de carga — agregar al final de app.py antes del if __name__
+# ELIMINAR después de ejecutar una vez
+
+@app.route('/admin/carga-inicial', methods=['GET','POST'])
+@login_required
+@rol_requerido('administrador')
+def carga_inicial():
+    if request.method == 'GET':
+        total_users = User.query.count()
+        total_sols  = Solicitud.query.count()
+        return f"""
+        <html><head><meta charset='UTF-8'>
+        <style>body{{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:40px}}
+        .btn{{background:#4BB8C8;color:#000;border:none;padding:12px 28px;font-size:16px;
+              font-weight:700;border-radius:8px;cursor:pointer;margin-top:20px;display:block}}
+        .warn{{background:#422006;border:1px solid #f59e0b;border-radius:8px;padding:16px;margin:20px 0;color:#fcd34d}}
+        </style></head><body>
+        <h2>🚀 Carga Inicial — Seguimiento SD</h2>
+        <p>Estado actual: <strong>{total_users} usuarios</strong> · <strong>{total_sols} solicitudes</strong></p>
+        <div class='warn'>
+        ⚠️ <strong>Esta acción cargará 19 usuarios y 186 solicitudes históricas.</strong><br>
+        Solo ejecutar una vez. Si ya corrió, no ejecutar de nuevo.
+        </div>
+        <form method='POST'>
+          <button class='btn' type='submit' onclick="this.disabled=true;this.textContent='Cargando... espera'">
+            ▶ Ejecutar carga masiva
+          </button>
+        </form>
+        </body></html>
+        """
+
+    # ── POST: ejecutar carga ────────────────────────────────────────
+    from werkzeug.security import generate_password_hash
+    from openpyxl import load_workbook
+    import io
+
+    log = []
+    warn = []
+
+    USUARIOS = [
+        ('Administrador',       'admin',                'administrador',    True,  'Admin2026!'),
+        ('Aline Esquivel',      'aline_esquivel',       'ingeniero',        True,  'IngeSD2026!'),
+        ('Karla Herrera',       'Karla_Herrera',        'comercial',        True,  'Hunter2026!'),
+        ('Rubí Arizmendi',      'rubi_arizmendi',       'aux_comercial',    True,  'AuxCom2026!'),
+        ('David Fortoul',       'David_Fortoul',        'comercial',        True,  'Hunter2026!'),
+        ('Alejandra Sánchez',   'Alejandra_Sanchez',    'comercial',        True,  'Hunter2026!'),
+        ('Diana Pelcastre',     'Diana_Pelcastre',      'comercial',        True,  'Hunter2026!'),
+        ('Ida Acosta',          'Ida_Acosta',           'comercial',        True,  'Hunter2026!'),
+        ('José Ortega',         'José_Ortega',          'comercial',        True,  'Hunter2026!'),
+        ('Maria Elena Baltazar','Maria_Elena_Baltazar', 'comercial',        True,  'Hunter2026!'),
+        ('Genoveva Roa',        'Genoveva_Roa',         'comercial',        True,  'Hunter2026!'),
+        ('Teresa Ruiz',         'Teresa_Ruiz',          'comercial',        True,  'Hunter2026!'),
+        ('Diego Arzate',        'Diego_Arzate',         'ingeniero',        True,  'IngeSD2026!'),
+        ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero',        True,  'IngeSD2026!'),
+        ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero',        True,  'IngeSD2026!'),
+        ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero',        True,  'IngeSD2026!'),
+        ('José Luis Montes',    'José_Luis_Montes',     'ingeniero',        False, 'IngeSD2026!'),
+        ('Francisco Cueva',     'Francisco_Cueva',      'lider_comercial',  True,  'Lcomercial123'),
+        ('Andrés Toledo',       'Andrés_Toledo',        'lider_soluciones', True,  'Lsoluciones123'),
+    ]
+
+    ESTATUS_MAP = {
+        'Entregado':  'Cerrada',
+        'Pendiente':  'Pendiente de Información',
+        'On Hold':    'Pendiente de Información',
+        'En proceso': 'En Proceso',
+    }
+
+    def parse_fecha(v):
+        if not v: return None
+        from datetime import datetime, date
+        if isinstance(v, datetime): return v.date()
+        if isinstance(v, date): return v
+        s = str(v).strip()
+        for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y'):
+            try: return datetime.strptime(s, fmt).date()
+            except: pass
+        return None
+
+    def es_check(v):
+        return str(v).strip() in ('✓','Si','Sí','sí','si','True','1','x','X') if v else False
+
+    # 1. Usuarios
+    log.append("=== USUARIOS ===")
+    creados_u = 0
+    for nombre, username, rol, activo, password in USUARIOS:
+        if not User.query.filter_by(username=username).first():
+            db.session.add(User(
+                username=username, nombre=nombre, rol=rol, activo=activo,
+                password_hash=generate_password_hash(password)
+            ))
+            log.append(f"✅ {nombre} [{rol}]{'  ← inactivo' if not activo else ''}")
+            creados_u += 1
+        else:
+            log.append(f"⏭️  Ya existe: {nombre}")
+    db.session.commit()
+    log.append(f"→ {creados_u} usuarios nuevos creados\n")
+
+    # 2. Excel
+    log.append("=== SOLICITUDES ===")
+    wb = load_workbook('/opt/render/project/src/carga_inicial_data.xlsx', data_only=True)
+    ws = wb['Soluciones']
+    data_rows = []
+    for row in range(2, ws.max_row+1):
+        vals = [ws.cell(row,c).value for c in range(1,26)]
+        if any(vals[:5]):
+            data_rows.append(vals)
+
+    users_by_nombre = {u.nombre: u for u in User.query.all()}
+    admin_u = User.query.filter_by(username='admin').first()
+
+    def generar_folio_local():
+        from datetime import datetime as dt
+        anio = 2026
+        ultima = (Solicitud.query
+                  .filter(Solicitud.folio.like(f'SOL-{anio}-%'))
+                  .order_by(Solicitud.id.desc()).first())
+        num = int(ultima.folio.split('-')[-1])+1 if ultima else 1
+        return f'SOL-{anio}-{num:04d}'
+
+    ok = 0; skip = 0
+    for i, r in enumerate(data_rows):
+        cliente = str(r[2]).strip() if r[2] else ''
+        if not cliente: skip += 1; continue
+
+        hunter_n = str(r[0]).strip() if r[0] else ''
+        resp_n   = str(r[3]).strip() if r[3] else ''
+        tema     = str(r[16]).strip() if r[16] else 'Sin definir'
+        comment  = str(r[24]).strip() if r[24] else ''
+        status_r = str(r[9]).strip() if r[9] else ''
+        estatus  = ESTATUS_MAP.get(status_r, 'Asignada')
+
+        hunter = users_by_nombre.get(hunter_n, admin_u)
+        if not users_by_nombre.get(hunter_n):
+            warn.append(f"Fila {i+2}: hunter '{hunter_n}' no encontrado")
+
+        resp = None
+        if resp_n and resp_n.lower() != 'sin asignar':
+            resp = users_by_nombre.get(resp_n)
+            if not resp:
+                warn.append(f"Fila {i+2}: responsable '{resp_n}' no encontrado")
+
+        from datetime import datetime as dt
+        ahora = dt.now()
+        fecha_sol = parse_fecha(r[1]) or date(2026,1,1)
+
+        sol = Solicitud(
+            folio=generar_folio_local(),
+            hunter_id=hunter.id,
+            responsable_id=resp.id if resp else None,
+            fecha_solicitud=fecha_sol,
+            fecha_captura=ahora,
+            cliente=cliente, tema=tema,
+            comentarios_comerciales=comment,
+            estatus=estatus,
+            fecha_compromiso=parse_fecha(r[5]),
+            cuestionario_logistico=es_check(r[18]),
+            inventario=es_check(r[22]),
+            maestro_productos=es_check(r[23]),
+            prioridad=None, prioridad_estado='pendiente',
+            ultima_actualizacion=ahora,
+        )
+        if estatus == 'Cerrada':
+            fe = parse_fecha(r[8])
+            cierre = dt.combine(fe, dt.min.time()) if fe else ahora
+            sol.fecha_cierre      = cierre
+            sol.usuario_cierre_id = admin_u.id
+            sol.fecha_envio_cliente = cierre
+            sol.usuario_envio_id    = admin_u.id
+
+        db.session.add(sol)
+        db.session.flush()
+
+        db.session.add(Bitacora(
+            solicitud_id=sol.id, usuario_id=admin_u.id,
+            accion=f'Carga masiva histórica. Status original: "{status_r}".'
+        ))
+        if resp:
+            db.session.add(SolicitudIngeniero(
+                solicitud_id=sol.id, ingeniero_id=resp.id, es_principal=True))
+
+        ok += 1
+        log.append(f"✅ {sol.folio} | {cliente[:30]} | {estatus}")
+
+    db.session.commit()
+
+    log.append(f"\n=== RESUMEN ===")
+    log.append(f"✅ Solicitudes cargadas: {ok}")
+    log.append(f"⏭️  Omitidas: {skip}")
+    if warn:
+        log.append(f"\n⚠️  Advertencias:")
+        for w in warn: log.append(f"  - {w}")
+    log.append("\n✅ CARGA COMPLETADA — Ya puedes eliminar esta ruta del código.")
+
+    output = '\n'.join(log)
+    return f"""
+    <html><head><meta charset='UTF-8'>
+    <style>body{{font-family:monospace;background:#0f172a;color:#e2e8f0;padding:30px;font-size:13px}}
+    pre{{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:20px;
+         overflow:auto;max-height:80vh;white-space:pre-wrap}}
+    h2{{color:#4BB8C8}}</style></head><body>
+    <h2>✅ Carga completada</h2>
+    <pre>{output}</pre>
+    <p style='color:#64748b;margin-top:20px'>
+    Ahora elimina la ruta <code>/admin/carga-inicial</code> del app.py y haz push.
+    </p>
+    </body></html>
+    """
 
 
 if __name__ == '__main__':
