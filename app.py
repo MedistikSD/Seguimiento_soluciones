@@ -34,9 +34,20 @@ ALLOWED_EXTENSIONS = {'pdf','xlsx','xls','pptx','docx','png','jpg','jpeg','zip'}
 
 db.init_app(app)
 
-with app.app_context():
-    # Migración automática — agrega columnas nuevas si no existen
-    # Seguro de correr múltiples veces gracias a IF NOT EXISTS
+
+
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
+# ── Inicialización diferida de BD (lazy) ─────────────────────────────────
+# Evita que db.create_all() bloquee el arranque si PostgreSQL está dormido
+_db_initialized = False
+
+@app.before_request
+def _lazy_init_db():
+    global _db_initialized
+    if _db_initialized:
+        return
     try:
         with db.engine.connect() as conn:
             from sqlalchemy import text
@@ -85,14 +96,14 @@ with app.app_context():
                 try:
                     conn.execute(text(sql))
                 except Exception:
-                    pass  # Columna ya existe o tabla no existe aún
+                    pass
             conn.commit()
+        db.create_all()
+        init_db()
+        _db_initialized = True
     except Exception as e:
-        print(f"Migración omitida (primera vez o SQLite): {e}")
-    db.create_all()
+        print(f"Lazy DB init falló (reintentará en próximo request): {e}")
 
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
 login_manager.login_message = 'Inicia sesión para continuar.'
 login_manager.login_message_category = 'warning'
 
@@ -1697,8 +1708,7 @@ def init_db():
         print('✅ Base de datos inicializada con usuarios y temas.')
 
 
-with app.app_context():
-    init_db()
+
 
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 5000))
