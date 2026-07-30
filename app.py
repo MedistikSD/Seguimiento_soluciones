@@ -1712,6 +1712,24 @@ def init_db():
 # Pegar en app.py antes de if __name__
 # ELIMINAR después de completar la carga
 
+
+@app.route('/admin/fix-folio')
+@login_required
+@rol_requerido('administrador')
+def fix_folio():
+    """Elimina folios corruptos generados por error de f-string."""
+    corruptos = Solicitud.query.filter(
+        Solicitud.folio.like('%{num%')
+    ).all()
+    n = len(corruptos)
+    for s in corruptos:
+        Bitacora.query.filter_by(solicitud_id=s.id).delete()
+        SolicitudIngeniero.query.filter_by(solicitud_id=s.id).delete()
+        db.session.delete(s)
+    db.session.commit()
+    return ('Eliminados ' + str(n) + ' folios corruptos. '
+            '<a href="/admin/carga-v2?paso=solicitudes&lote=0">Continuar carga</a>')
+
 @app.route('/admin/carga-v2')
 @login_required
 @rol_requerido('administrador')
@@ -1848,7 +1866,7 @@ def carga_v2():
                       .filter(Solicitud.folio.like('SOL-2026-%'))
                       .order_by(Solicitud.id.desc()).first())
             num = int(ultima.folio.split('-')[-1])+1 if ultima else 1
-            return f'SOL-2026-{{num:04d}}'
+            return 'SOL-2026-' + str(num).zfill(4)
 
         log = [f"Lote {lote+1}/{total_lotes} — filas {inicio+1} a {fin}"]
         ok = 0
