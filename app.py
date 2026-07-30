@@ -361,14 +361,15 @@ def solicitudes():
 
     folio       = request.args.get('folio','').strip()
     cliente     = request.args.get('cliente','').strip()
-    estatus     = request.args.get('estatus','').strip()
+    estatus_list_f = request.args.getlist('estatus')  # multi-select
+    estatus        = estatus_list_f[0] if len(estatus_list_f)==1 else ''
     comercial_f = request.args.get('comercial','').strip()
     ingeniero_f = request.args.get('ingeniero','').strip()
     tema_f      = request.args.get('tema','').strip()
 
-    if folio:       q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
-    if cliente:     q = q.filter(Solicitud.cliente.ilike(f'%{cliente}%'))
-    if estatus:     q = q.filter(Solicitud.estatus == estatus)
+    if folio:          q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
+    if cliente:        q = q.filter(Solicitud.cliente.ilike(f'%{cliente}%'))
+    if estatus_list_f: q = q.filter(Solicitud.estatus.in_(estatus_list_f))
     if tema_f:      q = q.filter(Solicitud.tema == tema_f)
     if comercial_f:
         q = q.join(User, Solicitud.hunter_id == User.id).filter(User.nombre.ilike(f'%{comercial_f}%'))

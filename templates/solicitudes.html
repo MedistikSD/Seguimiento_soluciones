@@ -33,13 +33,25 @@
       <input type="text" name="cliente" class="form-control form-control-sm" placeholder="Cliente"
              value="{{ request.args.get('cliente','') }}">
     </div>
-    <div class="col-6 col-md-2">
-      <select name="estatus" class="form-select form-select-sm">
-        <option value="">Todos los estatus</option>
-        {% for e in estatus_list %}
-        <option value="{{ e }}" {% if request.args.get('estatus') == e %}selected{% endif %}>{{ e }}</option>
-        {% endfor %}
-      </select>
+    <div class="col-6 col-md-2" style="position:relative">
+      <div class="estatus-multi-wrap">
+        <button type="button" class="form-select form-select-sm text-start" id="btnEstatusSol"
+                onclick="toggleEstatusSol()" style="cursor:pointer">
+          {% set sel_list = request.args.getlist('estatus') %}
+          {% if sel_list %}{{ sel_list|length }} seleccionado(s){% else %}Todos los estatus{% endif %}
+        </button>
+        <div class="estatus-dropdown" id="estatusDropdownSol" style="display:none">
+          {% set sel_list = request.args.getlist('estatus') %}
+          {% for e in estatus_list %}
+          <label class="estatus-opt {% if e in sel_list %}active{% endif %}">
+            <input type="checkbox" name="estatus" value="{{ e }}"
+                   {% if e in sel_list %}checked{% endif %}
+                   onchange="this.closest('label').classList.toggle('active',this.checked)">
+            {{ e }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     {% if current_user.rol in ('lider_comercial','lider_soluciones','administrador','aux_comercial') %}
     <div class="col-6 col-md-2">
@@ -254,4 +266,18 @@ document.getElementById('btnCerrarLote').addEventListener('click', () => ejecuta
 {% endif %}
 </script>
 {% endif %}
+<script>
+// ── Multi-select estatus solicitudes ─────────────────────────
+function toggleEstatusSol() {
+  const dd = document.getElementById('estatusDropdownSol');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const wrap = document.querySelector('.estatus-multi-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const dd = document.getElementById('estatusDropdownSol');
+    if (dd) dd.style.display = 'none';
+  }
+});
+</script>
 {% endblock %}
