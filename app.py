@@ -1964,6 +1964,39 @@ def init_db():
 
 
 
+
+@app.route('/admin/reset-passwords')
+@login_required
+@rol_requerido('administrador')
+def reset_passwords():
+    """Resetea contraseñas de todos los usuarios a las contraseñas estándar por rol."""
+    from werkzeug.security import generate_password_hash
+    PASSWORDS = {
+        'administrador':    'Admin2026!',
+        'lider_comercial':  'Lcomercial123',
+        'lider_soluciones': 'Lsoluciones123',
+        'comercial':        'Hunter2026!',
+        'aux_comercial':    'AuxCom2026!',
+        'ingeniero':        'IngeSD2026!',
+    }
+    usuarios = User.query.all()
+    log = []
+    for u in usuarios:
+        nueva = PASSWORDS.get(u.rol, 'SD2026!')
+        u.password_hash = generate_password_hash(nueva)
+        log.append(u.nombre + ' [' + u.rol + '] → ' + nueva)
+    db.session.commit()
+    rows = ''.join('<tr><td>' + l.replace(' → ','</td><td>') + '</td></tr>' for l in log)
+    return ('<html><head><meta charset="UTF-8">'
+            '<style>body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px}'
+            'table{border-collapse:collapse;width:100%}td{padding:8px 12px;border-bottom:1px solid #2a3040}'
+            'h2{color:#4BB8C8}a{color:#4BB8C8}</style></head><body>'
+            '<h2>✅ Contraseñas reseteadas</h2>'
+            '<table><tr><th style="text-align:left">Usuario</th><th style="text-align:left">Contraseña</th></tr>'
+            + rows +
+            '</table><br><a href="/dashboard">Ir al Dashboard</a>'
+            '</body></html>')
+
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
