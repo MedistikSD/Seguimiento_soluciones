@@ -1840,7 +1840,7 @@ def carga_v2():
             <p style='color:#64748b'>Ya puedes eliminar la ruta y el archivo xlsx del repo.</p>
             <a class='btn' href='/dashboard'>→ Ir al Dashboard</a>"""
 
-        users_by_nombre = {{u.nombre: u for u in User.query.all()}}
+        users_by_nombre = {u.nombre: u for u in User.query.all()}
         admin_u = User.query.filter_by(username='admin').first()
 
         def folio():
