@@ -1708,214 +1708,208 @@ def init_db():
         print('✅ Base de datos inicializada con usuarios y temas.')
 
 
-# Ruta temporal de carga — agregar al final de app.py antes del if __name__
-# ELIMINAR después de ejecutar una vez
+# ── CARGA V2 — en lotes para evitar timeout ──────────────────────────────
+# Pegar en app.py antes de if __name__
+# ELIMINAR después de completar la carga
 
-@app.route('/admin/carga-inicial', methods=['GET','POST'])
+@app.route('/admin/carga-v2')
 @login_required
 @rol_requerido('administrador')
-def carga_inicial():
-    if request.method == 'GET':
-        total_users = User.query.count()
-        total_sols  = Solicitud.query.count()
-        return f"""
-        <html><head><meta charset='UTF-8'>
-        <style>body{{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:40px}}
-        .btn{{background:#4BB8C8;color:#000;border:none;padding:12px 28px;font-size:16px;
-              font-weight:700;border-radius:8px;cursor:pointer;margin-top:20px;display:block}}
-        .warn{{background:#422006;border:1px solid #f59e0b;border-radius:8px;padding:16px;margin:20px 0;color:#fcd34d}}
-        </style></head><body>
-        <h2>🚀 Carga Inicial — Seguimiento SD</h2>
-        <p>Estado actual: <strong>{total_users} usuarios</strong> · <strong>{total_sols} solicitudes</strong></p>
-        <div class='warn'>
-        ⚠️ <strong>Esta acción cargará 19 usuarios y 186 solicitudes históricas.</strong><br>
-        Solo ejecutar una vez. Si ya corrió, no ejecutar de nuevo.
+def carga_v2():
+    """Panel de carga en pasos — evita timeout de Render."""
+    paso = request.args.get('paso', 'menu')
+    lote = int(request.args.get('lote', 0))
+
+    CSS = """<style>
+    body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px;max-width:800px}
+    .btn{background:#4BB8C8;color:#000;border:none;padding:10px 22px;font-size:14px;
+         font-weight:700;border-radius:6px;cursor:pointer;text-decoration:none;
+         display:inline-block;margin:6px 4px}
+    .btn-green{background:#7fad00;color:#000}
+    .btn-red{background:#ef4444;color:#fff}
+    pre{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:16px;
+        font-size:12px;max-height:400px;overflow:auto;white-space:pre-wrap}
+    .card{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:20px;margin:12px 0}
+    h2{color:#4BB8C8} h3{color:#aeca00}
+    </style>"""
+
+    # ── MENÚ ─────────────────────────────────────────────────────────
+    if paso == 'menu':
+        total_u = User.query.count()
+        total_s = Solicitud.query.count()
+        return f"""{CSS}<h2>🚀 Carga Inicial v2 — Por pasos</h2>
+        <div class='card'>
+          <b>Estado actual:</b> {total_u} usuarios · {total_s} solicitudes
         </div>
-        <form method='POST'>
-          <button class='btn' type='submit' onclick="this.disabled=true;this.textContent='Cargando... espera'">
-            ▶ Ejecutar carga masiva
-          </button>
-        </form>
-        </body></html>
-        """
+        <div class='card'>
+          <h3>Paso 1 — Usuarios</h3>
+          <p>Crea los 19 usuarios del equipo. Rápido (~5 seg).</p>
+          <a class='btn' href='?paso=usuarios'>▶ Cargar usuarios</a>
+        </div>
+        <div class='card'>
+          <h3>Paso 2 — Solicitudes (en lotes de 20)</h3>
+          <p>Carga las 186 solicitudes históricas. Ejecuta cada lote por separado.</p>
+          <a class='btn' href='?paso=solicitudes&lote=0'>▶ Iniciar lotes</a>
+        </div>"""
 
-    # ── POST: ejecutar carga ────────────────────────────────────────
-    from werkzeug.security import generate_password_hash
-    from openpyxl import load_workbook
-    import io
+    # ── USUARIOS ─────────────────────────────────────────────────────
+    if paso == 'usuarios':
+        from werkzeug.security import generate_password_hash
+        USUARIOS = [
+            ('Administrador',       'admin',                'administrador',    True,  'Admin2026!'),
+            ('Aline Esquivel',      'aline_esquivel',       'ingeniero',        True,  'IngeSD2026!'),
+            ('Karla Herrera',       'Karla_Herrera',        'comercial',        True,  'Hunter2026!'),
+            ('Rubí Arizmendi',      'rubi_arizmendi',       'aux_comercial',    True,  'AuxCom2026!'),
+            ('David Fortoul',       'David_Fortoul',        'comercial',        True,  'Hunter2026!'),
+            ('Alejandra Sánchez',   'Alejandra_Sanchez',    'comercial',        True,  'Hunter2026!'),
+            ('Diana Pelcastre',     'Diana_Pelcastre',      'comercial',        True,  'Hunter2026!'),
+            ('Ida Acosta',          'Ida_Acosta',           'comercial',        True,  'Hunter2026!'),
+            ('José Ortega',         'José_Ortega',          'comercial',        True,  'Hunter2026!'),
+            ('Maria Elena Baltazar','Maria_Elena_Baltazar', 'comercial',        True,  'Hunter2026!'),
+            ('Genoveva Roa',        'Genoveva_Roa',         'comercial',        True,  'Hunter2026!'),
+            ('Teresa Ruiz',         'Teresa_Ruiz',          'comercial',        True,  'Hunter2026!'),
+            ('Diego Arzate',        'Diego_Arzate',         'ingeniero',        True,  'IngeSD2026!'),
+            ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero',        True,  'IngeSD2026!'),
+            ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero',        True,  'IngeSD2026!'),
+            ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero',        True,  'IngeSD2026!'),
+            ('José Luis Montes',    'José_Luis_Montes',     'ingeniero',        False, 'IngeSD2026!'),
+            ('Francisco Cueva',     'Francisco_Cueva',      'lider_comercial',  True,  'Lcomercial123'),
+            ('Andrés Toledo',       'Andrés_Toledo',        'lider_soluciones', True,  'Lsoluciones123'),
+        ]
+        log = []
+        creados = 0
+        for nombre, username, rol, activo, pwd in USUARIOS:
+            if not User.query.filter_by(username=username).first():
+                db.session.add(User(
+                    username=username, nombre=nombre, rol=rol,
+                    activo=activo, password_hash=generate_password_hash(pwd)
+                ))
+                log.append(f"✅ {nombre} [{rol}]")
+                creados += 1
+            else:
+                log.append(f"⏭️  Ya existe: {nombre}")
+        db.session.commit()
+        log.append(f"\n→ {creados} usuarios creados. Total: {User.query.count()}")
+        return f"""{CSS}<h2>✅ Usuarios cargados</h2>
+        <pre>{'chr(10)'.join(log)}</pre>
+        <a class='btn btn-green' href='?paso=solicitudes&lote=0'>▶ Continuar → Cargar solicitudes</a>
+        <a class='btn' href='?paso=menu'>← Menú</a>"""
 
-    log = []
-    warn = []
+    # ── SOLICITUDES EN LOTES ─────────────────────────────────────────
+    if paso == 'solicitudes':
+        from openpyxl import load_workbook
+        from datetime import datetime as dt, date
 
-    USUARIOS = [
-        ('Administrador',       'admin',                'administrador',    True,  'Admin2026!'),
-        ('Aline Esquivel',      'aline_esquivel',       'ingeniero',        True,  'IngeSD2026!'),
-        ('Karla Herrera',       'Karla_Herrera',        'comercial',        True,  'Hunter2026!'),
-        ('Rubí Arizmendi',      'rubi_arizmendi',       'aux_comercial',    True,  'AuxCom2026!'),
-        ('David Fortoul',       'David_Fortoul',        'comercial',        True,  'Hunter2026!'),
-        ('Alejandra Sánchez',   'Alejandra_Sanchez',    'comercial',        True,  'Hunter2026!'),
-        ('Diana Pelcastre',     'Diana_Pelcastre',      'comercial',        True,  'Hunter2026!'),
-        ('Ida Acosta',          'Ida_Acosta',           'comercial',        True,  'Hunter2026!'),
-        ('José Ortega',         'José_Ortega',          'comercial',        True,  'Hunter2026!'),
-        ('Maria Elena Baltazar','Maria_Elena_Baltazar', 'comercial',        True,  'Hunter2026!'),
-        ('Genoveva Roa',        'Genoveva_Roa',         'comercial',        True,  'Hunter2026!'),
-        ('Teresa Ruiz',         'Teresa_Ruiz',          'comercial',        True,  'Hunter2026!'),
-        ('Diego Arzate',        'Diego_Arzate',         'ingeniero',        True,  'IngeSD2026!'),
-        ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero',        True,  'IngeSD2026!'),
-        ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero',        True,  'IngeSD2026!'),
-        ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero',        True,  'IngeSD2026!'),
-        ('José Luis Montes',    'José_Luis_Montes',     'ingeniero',        False, 'IngeSD2026!'),
-        ('Francisco Cueva',     'Francisco_Cueva',      'lider_comercial',  True,  'Lcomercial123'),
-        ('Andrés Toledo',       'Andrés_Toledo',        'lider_soluciones', True,  'Lsoluciones123'),
-    ]
+        ESTATUS_MAP = {
+            'Entregado':  'Cerrada',
+            'Pendiente':  'Pendiente de Información',
+            'On Hold':    'Pendiente de Información',
+            'En proceso': 'En Proceso',
+        }
 
-    ESTATUS_MAP = {
-        'Entregado':  'Cerrada',
-        'Pendiente':  'Pendiente de Información',
-        'On Hold':    'Pendiente de Información',
-        'En proceso': 'En Proceso',
-    }
+        def pf(v):
+            if not v: return None
+            if isinstance(v, dt): return v.date()
+            if isinstance(v, date): return v
+            for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y'):
+                try: return dt.strptime(str(v).strip(), fmt).date()
+                except: pass
+            return None
 
-    def parse_fecha(v):
-        if not v: return None
-        from datetime import datetime, date
-        if isinstance(v, datetime): return v.date()
-        if isinstance(v, date): return v
-        s = str(v).strip()
-        for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y'):
-            try: return datetime.strptime(s, fmt).date()
-            except: pass
-        return None
+        def ck(v):
+            return str(v).strip() in ('✓','Si','Sí','True','1','x','X') if v else False
 
-    def es_check(v):
-        return str(v).strip() in ('✓','Si','Sí','sí','si','True','1','x','X') if v else False
+        wb = load_workbook('/opt/render/project/src/carga_inicial_data.xlsx', data_only=True)
+        ws = wb['Soluciones']
+        all_rows = []
+        for row in range(2, ws.max_row+1):
+            vals = [ws.cell(row,c).value for c in range(1,26)]
+            if any(vals[:5]):
+                all_rows.append(vals)
 
-    # 1. Usuarios
-    log.append("=== USUARIOS ===")
-    creados_u = 0
-    for nombre, username, rol, activo, password in USUARIOS:
-        if not User.query.filter_by(username=username).first():
-            db.session.add(User(
-                username=username, nombre=nombre, rol=rol, activo=activo,
-                password_hash=generate_password_hash(password)
-            ))
-            log.append(f"✅ {nombre} [{rol}]{'  ← inactivo' if not activo else ''}")
-            creados_u += 1
-        else:
-            log.append(f"⏭️  Ya existe: {nombre}")
-    db.session.commit()
-    log.append(f"→ {creados_u} usuarios nuevos creados\n")
+        TAM_LOTE = 20
+        total_lotes = (len(all_rows) + TAM_LOTE - 1) // TAM_LOTE
+        inicio = lote * TAM_LOTE
+        fin    = min(inicio + TAM_LOTE, len(all_rows))
+        lote_rows = all_rows[inicio:fin]
 
-    # 2. Excel
-    log.append("=== SOLICITUDES ===")
-    wb = load_workbook('/opt/render/project/src/carga_inicial_data.xlsx', data_only=True)
-    ws = wb['Soluciones']
-    data_rows = []
-    for row in range(2, ws.max_row+1):
-        vals = [ws.cell(row,c).value for c in range(1,26)]
-        if any(vals[:5]):
-            data_rows.append(vals)
+        if not lote_rows:
+            total_s = Solicitud.query.count()
+            return f"""{CSS}<h2>🎉 ¡Carga completada!</h2>
+            <div class='card'>Total solicitudes en BD: <b>{total_s}</b></div>
+            <p style='color:#64748b'>Ya puedes eliminar la ruta y el archivo xlsx del repo.</p>
+            <a class='btn' href='/dashboard'>→ Ir al Dashboard</a>"""
 
-    users_by_nombre = {u.nombre: u for u in User.query.all()}
-    admin_u = User.query.filter_by(username='admin').first()
+        users_by_nombre = {{u.nombre: u for u in User.query.all()}}
+        admin_u = User.query.filter_by(username='admin').first()
 
-    def generar_folio_local():
-        from datetime import datetime as dt
-        anio = 2026
-        ultima = (Solicitud.query
-                  .filter(Solicitud.folio.like(f'SOL-{anio}-%'))
-                  .order_by(Solicitud.id.desc()).first())
-        num = int(ultima.folio.split('-')[-1])+1 if ultima else 1
-        return f'SOL-{anio}-{num:04d}'
+        def folio():
+            ultima = (Solicitud.query
+                      .filter(Solicitud.folio.like('SOL-2026-%'))
+                      .order_by(Solicitud.id.desc()).first())
+            num = int(ultima.folio.split('-')[-1])+1 if ultima else 1
+            return f'SOL-2026-{{num:04d}}'
 
-    ok = 0; skip = 0
-    for i, r in enumerate(data_rows):
-        cliente = str(r[2]).strip() if r[2] else ''
-        if not cliente: skip += 1; continue
+        log = [f"Lote {lote+1}/{total_lotes} — filas {inicio+1} a {fin}"]
+        ok = 0
 
-        hunter_n = str(r[0]).strip() if r[0] else ''
-        resp_n   = str(r[3]).strip() if r[3] else ''
-        tema     = str(r[16]).strip() if r[16] else 'Sin definir'
-        comment  = str(r[24]).strip() if r[24] else ''
-        status_r = str(r[9]).strip() if r[9] else ''
-        estatus  = ESTATUS_MAP.get(status_r, 'Asignada')
+        for r in lote_rows:
+            cliente = str(r[2]).strip() if r[2] else ''
+            if not cliente: continue
+            hunter  = users_by_nombre.get(str(r[0]).strip() if r[0] else '', admin_u) or admin_u
+            resp_n  = str(r[3]).strip() if r[3] else ''
+            resp    = users_by_nombre.get(resp_n) if resp_n.lower() != 'sin asignar' else None
+            estatus = ESTATUS_MAP.get(str(r[9]).strip() if r[9] else '', 'Asignada')
+            ahora   = dt.now()
 
-        hunter = users_by_nombre.get(hunter_n, admin_u)
-        if not users_by_nombre.get(hunter_n):
-            warn.append(f"Fila {i+2}: hunter '{hunter_n}' no encontrado")
+            sol = Solicitud(
+                folio=folio(),
+                hunter_id=hunter.id,
+                responsable_id=resp.id if resp else None,
+                fecha_solicitud=pf(r[1]) or date(2026,1,1),
+                fecha_captura=ahora,
+                cliente=cliente,
+                tema=str(r[16]).strip() if r[16] else 'Sin definir',
+                comentarios_comerciales=str(r[24]).strip() if r[24] else '',
+                estatus=estatus,
+                fecha_compromiso=pf(r[5]),
+                cuestionario_logistico=ck(r[18]),
+                inventario=ck(r[22]),
+                maestro_productos=ck(r[23]),
+                prioridad=None, prioridad_estado='pendiente',
+                ultima_actualizacion=ahora,
+            )
+            if estatus == 'Cerrada':
+                fe = pf(r[8])
+                c  = dt.combine(fe, dt.min.time()) if fe else ahora
+                sol.fecha_cierre = c; sol.usuario_cierre_id = admin_u.id
+                sol.fecha_envio_cliente = c; sol.usuario_envio_id = admin_u.id
 
-        resp = None
-        if resp_n and resp_n.lower() != 'sin asignar':
-            resp = users_by_nombre.get(resp_n)
-            if not resp:
-                warn.append(f"Fila {i+2}: responsable '{resp_n}' no encontrado")
+            db.session.add(sol)
+            db.session.flush()
+            db.session.add(Bitacora(solicitud_id=sol.id, usuario_id=admin_u.id,
+                accion=f'Carga masiva histórica.'))
+            if resp:
+                db.session.add(SolicitudIngeniero(
+                    solicitud_id=sol.id, ingeniero_id=resp.id, es_principal=True))
+            log.append(f"✅ {{sol.folio}} | {{cliente[:35]}}")
+            ok += 1
 
-        from datetime import datetime as dt
-        ahora = dt.now()
-        fecha_sol = parse_fecha(r[1]) or date(2026,1,1)
+        db.session.commit()
+        total_s   = Solicitud.query.count()
+        sig_lote  = lote + 1
+        hay_mas   = fin < len(all_rows)
+        log.append(f"\n→ {ok} insertadas. Total en BD: {total_s}/{len(all_rows)}")
 
-        sol = Solicitud(
-            folio=generar_folio_local(),
-            hunter_id=hunter.id,
-            responsable_id=resp.id if resp else None,
-            fecha_solicitud=fecha_sol,
-            fecha_captura=ahora,
-            cliente=cliente, tema=tema,
-            comentarios_comerciales=comment,
-            estatus=estatus,
-            fecha_compromiso=parse_fecha(r[5]),
-            cuestionario_logistico=es_check(r[18]),
-            inventario=es_check(r[22]),
-            maestro_productos=es_check(r[23]),
-            prioridad=None, prioridad_estado='pendiente',
-            ultima_actualizacion=ahora,
-        )
-        if estatus == 'Cerrada':
-            fe = parse_fecha(r[8])
-            cierre = dt.combine(fe, dt.min.time()) if fe else ahora
-            sol.fecha_cierre      = cierre
-            sol.usuario_cierre_id = admin_u.id
-            sol.fecha_envio_cliente = cierre
-            sol.usuario_envio_id    = admin_u.id
+        btn_sig = f"<a class='btn btn-green' href='?paso=solicitudes&lote={sig_lote}'>▶ Siguiente lote ({sig_lote+1}/{total_lotes})</a>" if hay_mas else "<a class='btn btn-green' href='?paso=solicitudes&lote={sig_lote}'>✅ Ver resumen final</a>"
 
-        db.session.add(sol)
-        db.session.flush()
+        return f"""{CSS}<h2>Lote {lote+1}/{total_lotes} completado</h2>
+        <pre>{'<br>'.join(log)}</pre>
+        {btn_sig}
+        <a class='btn' href='?paso=menu'>← Menú</a>"""
 
-        db.session.add(Bitacora(
-            solicitud_id=sol.id, usuario_id=admin_u.id,
-            accion=f'Carga masiva histórica. Status original: "{status_r}".'
-        ))
-        if resp:
-            db.session.add(SolicitudIngeniero(
-                solicitud_id=sol.id, ingeniero_id=resp.id, es_principal=True))
+    return "Paso no válido", 400
 
-        ok += 1
-        log.append(f"✅ {sol.folio} | {cliente[:30]} | {estatus}")
-
-    db.session.commit()
-
-    log.append(f"\n=== RESUMEN ===")
-    log.append(f"✅ Solicitudes cargadas: {ok}")
-    log.append(f"⏭️  Omitidas: {skip}")
-    if warn:
-        log.append(f"\n⚠️  Advertencias:")
-        for w in warn: log.append(f"  - {w}")
-    log.append("\n✅ CARGA COMPLETADA — Ya puedes eliminar esta ruta del código.")
-
-    output = '\n'.join(log)
-    return f"""
-    <html><head><meta charset='UTF-8'>
-    <style>body{{font-family:monospace;background:#0f172a;color:#e2e8f0;padding:30px;font-size:13px}}
-    pre{{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:20px;
-         overflow:auto;max-height:80vh;white-space:pre-wrap}}
-    h2{{color:#4BB8C8}}</style></head><body>
-    <h2>✅ Carga completada</h2>
-    <pre>{output}</pre>
-    <p style='color:#64748b;margin-top:20px'>
-    Ahora elimina la ruta <code>/admin/carga-inicial</code> del app.py y haz push.
-    </p>
-    </body></html>
-    """
 
 
 if __name__ == '__main__':
