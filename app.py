@@ -114,6 +114,7 @@ ROLES_LABEL = {
     'aux_comercial':    'Aux Comercial',
     'comercial':        'Comercial',
     'ingeniero':        'Ingeniero',
+    'aux_ingenieria':   'Aux Ingeniería',
 }
 
 TEMAS_DEFAULT = ['Reingeniería','Transporte','Almacenaje','VAS','Transporte y almacenaje']
@@ -147,7 +148,7 @@ def es_comercial():
     return current_user.rol in ('administrador','comercial','lider_comercial','aux_comercial')
 
 def es_soluciones():
-    return current_user.rol in ('administrador','ingeniero','lider_soluciones')
+    return current_user.rol in ('administrador','ingeniero','aux_ingenieria','lider_soluciones')
 
 def puede_asignar_ingeniero():
     return current_user.rol in ('administrador','lider_soluciones')
@@ -180,7 +181,7 @@ def get_temas():
 
 def asignar_ingeniero_automatico():
     """Asigna al ingeniero con menor número de solicitudes activas."""
-    ingenieros = User.query.filter_by(rol='ingeniero', activo=True).all()
+    ingenieros = User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria']), User.activo==True).all()
     if not ingenieros:
         return None
     cargas = []
@@ -308,7 +309,7 @@ def dashboard():
                 if s.hunter:
                     com_montos[s.hunter.nombre] += monto
                     com_counts[s.hunter.nombre] += 1
-                if s.responsable and s.responsable.rol == 'ingeniero':
+                if s.responsable and s.responsable.rol in ('ingeniero','aux_ingenieria'):
                     key = s.responsable.nombre
                     ing_data[key]['count'] += 1
                     ing_data[key]['monto_total'] += monto
@@ -356,7 +357,7 @@ def solicitudes():
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
-    elif current_user.rol == 'ingeniero':
+    elif current_user.rol in ('ingeniero','aux_ingenieria'):
         q = q.filter(Solicitud.responsable_id == current_user.id)
 
     folio       = request.args.get('folio','').strip()
@@ -364,7 +365,7 @@ def solicitudes():
     estatus_list_f = request.args.getlist('estatus')  # multi-select
     estatus        = estatus_list_f[0] if len(estatus_list_f)==1 else ''
     comercial_f = request.args.get('comercial','').strip()
-    ingeniero_f = request.args.get('ingeniero','').strip()
+    ingeniero_f = request.args.get('ingeniero','aux_ingenieria','').strip()
     tema_f      = request.args.get('tema','').strip()
 
     if folio:          q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
@@ -378,7 +379,7 @@ def solicitudes():
         q = q.join(ra, Solicitud.responsable_id == ra.id).filter(ra.nombre.ilike(f'%{ingeniero_f}%'))
 
     lista      = q.order_by(Solicitud.fecha_captura.desc()).all()
-    ingenieros = User.query.filter_by(rol='ingeniero', activo=True).all()
+    ingenieros = User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria']), User.activo==True).all()
     estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
                     'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
                     'Liberada','Enviada','Cerrada']
@@ -391,7 +392,7 @@ def solicitudes():
 @login_required
 @rol_requerido('comercial','lider_comercial','aux_comercial','administrador')
 def nueva_solicitud():
-    ingenieros  = User.query.filter_by(rol='ingeniero', activo=True).all()
+    ingenieros  = User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria']), User.activo==True).all()
     comerciales = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial']), User.activo==True).all()
     temas       = get_temas()
 
@@ -541,7 +542,7 @@ def detalle_solicitud(folio):
         if sol.hunter_id not in ids:
             flash('No tienes acceso a esta solicitud.', 'danger')
             return redirect(url_for('solicitudes'))
-    ingenieros   = User.query.filter_by(rol='ingeniero', activo=True).all()
+    ingenieros   = User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria']), User.activo==True).all()
     estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
                     'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
                     'Liberada','Enviada','Cerrada']
@@ -551,10 +552,10 @@ def detalle_solicitud(folio):
 
 @app.route('/solicitudes/<folio>/actualizar', methods=['POST'])
 @login_required
-@rol_requerido('ingeniero','lider_soluciones','administrador')
+@rol_requerido('ingeniero','aux_ingenieria','aux_ingenieria','lider_soluciones','administrador')
 def actualizar_solicitud(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
-    if current_user.rol == 'ingeniero' and sol.responsable_id != current_user.id and not es_admin():
+    if current_user.rol in ('ingeniero','aux_ingenieria') and sol.responsable_id != current_user.id and not es_admin():
         flash('No tienes permiso para actualizar esta solicitud.', 'danger')
         return redirect(url_for('detalle_solicitud', folio=folio))
 
@@ -597,7 +598,7 @@ def actualizar_solicitud(folio):
 
 @app.route('/solicitudes/<folio>/envio', methods=['POST'])
 @login_required
-@rol_requerido('ingeniero','lider_soluciones','administrador')
+@rol_requerido('ingeniero','aux_ingenieria','aux_ingenieria','lider_soluciones','administrador')
 def registrar_envio(folio):
     sol = Solicitud.query.filter_by(folio=folio).first_or_404()
     if not request.form.get('comentarios_envio','').strip():
@@ -738,7 +739,7 @@ def admin_usuarios():
     elif current_user.rol in ('lider_comercial','aux_comercial'):
         roles_visibles = ['comercial','aux_comercial','lider_comercial']
     else:
-        roles_visibles = ['ingeniero','lider_soluciones']
+        roles_visibles = ['ingeniero','aux_ingenieria','lider_soluciones']
     usuarios = User.query.filter(User.rol.in_(roles_visibles)).order_by(User.nombre).all()
     return render_template('admin_usuarios.html', usuarios=usuarios,
                            roles_visibles=roles_visibles, ROLES_LABEL=ROLES_LABEL)
@@ -864,7 +865,7 @@ def puede_subir_doc(tipo):
         return True
     if tipo in ('comercial',) and current_user.rol in ('comercial','lider_comercial','aux_comercial'):
         return True
-    if tipo == 'soluciones' and current_user.rol in ('ingeniero','lider_soluciones','aux_comercial','lider_comercial'):
+    if tipo == 'soluciones' and current_user.rol in ('ingeniero','aux_ingenieria','lider_soluciones','aux_comercial','lider_comercial'):
         return True
     if tipo == 'propuesta_final' and current_user.rol in ('comercial','lider_comercial'):
         return True
@@ -1515,7 +1516,7 @@ def exportar_usuarios():
     elif current_user.rol in ('lider_comercial','aux_comercial'):
         usuarios = User.query.filter(User.rol.in_(['comercial','aux_comercial','lider_comercial']))                             .order_by(User.nombre).all()
     else:
-        usuarios = User.query.filter(User.rol.in_(['ingeniero','lider_soluciones']))                             .order_by(User.nombre).all()
+        usuarios = User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria','lider_soluciones']))                             .order_by(User.nombre).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -1809,7 +1810,7 @@ def init_db():
         from werkzeug.security import generate_password_hash
         USUARIOS = [
             ('Administrador',       'admin',                'administrador',    True,  'Admin2026!'),
-            ('Aline Esquivel',      'aline_esquivel',       'ingeniero',        True,  'IngeSD2026!'),
+            ('Aline Esquivel',      'aline_esquivel',       'ingeniero','aux_ingenieria',        True,  'IngeSD2026!'),
             ('Karla Herrera',       'Karla_Herrera',        'comercial',        True,  'Hunter2026!'),
             ('Rubí Arizmendi',      'rubi_arizmendi',       'aux_comercial',    True,  'AuxCom2026!'),
             ('David Fortoul',       'David_Fortoul',        'comercial',        True,  'Hunter2026!'),
@@ -1820,11 +1821,11 @@ def init_db():
             ('Maria Elena Baltazar','Maria_Elena_Baltazar', 'comercial',        True,  'Hunter2026!'),
             ('Genoveva Roa',        'Genoveva_Roa',         'comercial',        True,  'Hunter2026!'),
             ('Teresa Ruiz',         'Teresa_Ruiz',          'comercial',        True,  'Hunter2026!'),
-            ('Diego Arzate',        'Diego_Arzate',         'ingeniero',        True,  'IngeSD2026!'),
-            ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero',        True,  'IngeSD2026!'),
-            ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero',        True,  'IngeSD2026!'),
-            ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero',        True,  'IngeSD2026!'),
-            ('José Luis Montes',    'José_Luis_Montes',     'ingeniero',        False, 'IngeSD2026!'),
+            ('Diego Arzate',        'Diego_Arzate',         'ingeniero','aux_ingenieria',        True,  'IngeSD2026!'),
+            ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero','aux_ingenieria',        True,  'IngeSD2026!'),
+            ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero','aux_ingenieria',        True,  'IngeSD2026!'),
+            ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero','aux_ingenieria',        True,  'IngeSD2026!'),
+            ('José Luis Montes',    'José_Luis_Montes',     'ingeniero','aux_ingenieria',        False, 'IngeSD2026!'),
             ('Francisco Cueva',     'Francisco_Cueva',      'lider_comercial',  True,  'Lcomercial123'),
             ('Andrés Toledo',       'Andrés_Toledo',        'lider_soluciones', True,  'Lsoluciones123'),
         ]
@@ -1969,33 +1970,82 @@ def init_db():
 @login_required
 @rol_requerido('administrador')
 def reset_passwords():
-    """Resetea contraseñas de todos los usuarios a las contraseñas estándar por rol."""
+    """Sincroniza usuarios, usernames, roles y contraseñas al esquema definitivo."""
     from werkzeug.security import generate_password_hash
-    PASSWORDS = {
-        'administrador':    'Admin2026!',
-        'lider_comercial':  'Lcomercial123',
-        'lider_soluciones': 'Lsoluciones123',
-        'comercial':        'Hunter2026!',
-        'aux_comercial':    'AuxCom2026!',
-        'ingeniero':        'IngeSD2026!',
-    }
-    usuarios = User.query.all()
+
+    USUARIOS_DEFINITIVOS = [
+        ('Administrador',       'admin',                'administrador',    True,  'Admin2026!1'),
+        ('Rubí Arizmendi',      'Rubí_Arizmendi',       'aux_comercial',    True,  'AuxCom2026!1'),
+        ('Aline Esquivel',      'Aline_Esquivel',       'aux_ingenieria',   True,  'AuxCom2026!2'),
+        ('Teresa Ruiz',         'Teresa_Ruiz',          'comercial',        True,  'Hunter2026!1'),
+        ('Alejandra Sánchez',   'Alejandra_Sánchez',    'comercial',        True,  'Hunter2026!2'),
+        ('Diana Pelcastre',     'Diana_Pelcastre',      'comercial',        True,  'Hunter2026!3'),
+        ('Ida Acosta',          'Ida_Acosta',           'comercial',        True,  'Hunter2026!4'),
+        ('Malena Baltazar',     'Malena_Baltazar',      'comercial',        True,  'Hunter2026!5'),
+        ('José Ortega',         'José_Ortega',          'comercial',        True,  'Hunter2026!6'),
+        ('Karla Herrera',       'Karla_Herrera',        'comercial',        True,  'Hunter2026!7'),
+        ('David Fortoul',       'David_Fortoul',        'comercial',        True,  'Hunter2026!8'),
+        ('Maria Elena Baltazar','Maria_Elena_Baltazar', 'comercial',        True,  'Hunter2026!9'),
+        ('Genoveva Roa',        'Genoveva_Roa',         'comercial',        True,  'Hunter2026!10'),
+        ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero',        True,  'IngeSD2026!1'),
+        ('Diego Arzate',        'Diego_Arzate',         'ingeniero',        True,  'IngeSD2026!2'),
+        ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero',        True,  'IngeSD2026!3'),
+        ('José Luis Montes',    'José_Luis_Montes',     'ingeniero',        False, 'IngeSD2026!4'),
+        ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero',        True,  'IngeSD2026!5'),
+        ('Francisco Cueva',     'Francisco_Cueva',      'lider_comercial',  True,  'Lcomercial1231'),
+        ('Andrés Toledo',       'Andrés_Toledo',        'lider_soluciones', True,  'Lsoluciones1231'),
+    ]
+
     log = []
-    for u in usuarios:
-        nueva = PASSWORDS.get(u.rol, 'SD2026!')
-        u.password_hash = generate_password_hash(nueva)
-        log.append(u.nombre + ' [' + u.rol + '] → ' + nueva)
+    for nombre, username, rol, activo, pwd in USUARIOS_DEFINITIVOS:
+        # Buscar por nombre (más confiable que username viejo)
+        u = User.query.filter(
+            db.or_(User.nombre == nombre, User.username == username)
+        ).first()
+        if u:
+            u.nombre        = nombre
+            u.username      = username
+            u.rol           = rol
+            u.activo        = activo
+            u.password_hash = generate_password_hash(pwd)
+            log.append('UPD ' + nombre + ' → ' + username + ' [' + rol + '] pwd:' + pwd)
+        else:
+            db.session.add(User(
+                nombre=nombre, username=username, rol=rol,
+                activo=activo, password_hash=generate_password_hash(pwd)
+            ))
+            log.append('NEW ' + nombre + ' → ' + username + ' [' + rol + '] pwd:' + pwd)
+
     db.session.commit()
-    rows = ''.join('<tr><td>' + l.replace(' → ','</td><td>') + '</td></tr>' for l in log)
+    rows = ''.join('<tr><td style="padding:6px 12px;border-bottom:1px solid #2a3040">'
+                   + l.replace(' → ','</td><td style="padding:6px 12px;border-bottom:1px solid #2a3040">'
+                   ).replace(' [','</td><td style="padding:6px 12px;border-bottom:1px solid #2a3040">[')
+                   .replace('] pwd:','</td><td style="padding:6px 12px;border-bottom:1px solid #2a3040">')
+                   + '</td></tr>' for l in log)
     return ('<html><head><meta charset="UTF-8">'
             '<style>body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px}'
-            'table{border-collapse:collapse;width:100%}td{padding:8px 12px;border-bottom:1px solid #2a3040}'
-            'h2{color:#4BB8C8}a{color:#4BB8C8}</style></head><body>'
-            '<h2>✅ Contraseñas reseteadas</h2>'
-            '<table><tr><th style="text-align:left">Usuario</th><th style="text-align:left">Contraseña</th></tr>'
+            'table{border-collapse:collapse;width:100%;font-size:13px}'
+            'h2{color:#4BB8C8}a{color:#4BB8C8}th{text-align:left;padding:8px 12px;'
+            'border-bottom:2px solid #4BB8C8;color:#4BB8C8}</style></head><body>'
+            '<h2>✅ Usuarios sincronizados</h2>'
+            '<table><tr><th>Acción</th><th>Nombre</th><th>Rol</th><th>Contraseña</th></tr>'
             + rows +
             '</table><br><a href="/dashboard">Ir al Dashboard</a>'
             '</body></html>')
+
+
+@app.route('/emergency-admin-reset')
+def emergency_admin_reset():
+    """Reset de emergencia solo para admin — eliminar inmediatamente después de usar."""
+    from werkzeug.security import generate_password_hash
+    admin = User.query.filter_by(username='admin').first()
+    if not admin:
+        return 'Admin no encontrado', 404
+    admin.password_hash = generate_password_hash('Admin2026!')
+    db.session.commit()
+    return ('Admin reseteado. Password: Admin2026! '
+            '<br><a href="/login">Ir al login</a>'
+            '<br><br>ELIMINA ESTA RUTA INMEDIATAMENTE DEL CODIGO.')
 
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 5000))
