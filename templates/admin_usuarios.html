@@ -80,6 +80,14 @@
                   {{ 'Desactivar' if u.activo else 'Activar' }}
                 </button>
               </form>
+              {% if current_user.rol == 'administrador' %}
+              <form method="POST" action="{{ url_for('admin_eliminar_usuario', uid=u.id) }}"
+                    onsubmit="return confirm('¿Eliminar permanentemente a {{ u.nombre }}? Esta acción no se puede deshacer.')">
+                <button type="submit" class="btn btn-xs btn-outline-danger">
+                  <i class="bi bi-trash3"></i> Eliminar
+                </button>
+              </form>
+              {% endif %}
               {% endif %}
             </div>
           </td>

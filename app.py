@@ -1275,6 +1275,31 @@ def subir_propuesta_final(folio):
     flash(f'Propuesta final v{version} subida correctamente.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
 
+
+@app.route('/admin/usuarios/<int:uid>/eliminar', methods=['POST'])
+@login_required
+@rol_requerido('administrador')
+def admin_eliminar_usuario(uid):
+    u = db.session.get(User, uid)
+    if not u:
+        flash('Usuario no encontrado.', 'danger')
+        return redirect(url_for('admin_usuarios'))
+    if u.id == current_user.id:
+        flash('No puedes eliminarte a ti mismo.', 'danger')
+        return redirect(url_for('admin_usuarios'))
+    # Reasignar solicitudes al admin para no perder datos
+    admin = User.query.filter_by(username='admin').first()
+    if admin and admin.id != u.id:
+        Solicitud.query.filter_by(hunter_id=u.id).update({'hunter_id': admin.id})
+        Solicitud.query.filter_by(responsable_id=u.id).update({'responsable_id': None})
+        SolicitudIngeniero.query.filter_by(ingeniero_id=u.id).delete()
+        Bitacora.query.filter_by(usuario_id=u.id).update({'usuario_id': admin.id})
+    nombre = u.nombre
+    db.session.delete(u)
+    db.session.commit()
+    flash(f'Usuario {nombre} eliminado correctamente.', 'success')
+    return redirect(url_for('admin_usuarios'))
+
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])
 @login_required
