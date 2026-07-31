@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Seguimiento SD{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body class="app-body">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Medistik" class="sidebar-logo">
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+        <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+      </a>
+      <a href="{{ url_for('solicitudes') }}" class="nav-item {% if request.endpoint in ('solicitudes','detalle_solicitud') %}active{% endif %}">
+        <i class="bi bi-file-text"></i><span>Solicitudes</span>
+      </a>
+      {% if current_user.rol in ('comercial','lider_comercial','aux_comercial','administrador') %}
+      <a href="{{ url_for('nueva_solicitud') }}" class="nav-item {% if request.endpoint == 'nueva_solicitud' %}active{% endif %}">
+        <i class="bi bi-plus-circle"></i><span>Nueva Solicitud</span>
+      </a>
+      {% endif %}
+      {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') %}
+      <div class="nav-section-label">Administración</div>
+      <a href="{{ url_for('admin_usuarios') }}" class="nav-item {% if request.endpoint in ('admin_usuarios','admin_nuevo_usuario','admin_editar_usuario') %}active{% endif %}">
+        <i class="bi bi-people"></i><span>Usuarios</span>
+      </a>
+      {% if current_user.rol == 'administrador' %}
+      <a href="{{ url_for('admin_temas') }}" class="nav-item {% if request.endpoint == 'admin_temas' %}active{% endif %}">
+        <i class="bi bi-tags"></i><span>Temas</span>
+      </a>
+      <a href="{{ url_for('carga_masiva') }}" class="nav-item {% if request.endpoint == 'carga_masiva' %}active{% endif %}">
+        <i class="bi bi-cloud-upload"></i><span>Carga Masiva</span>
+      </a>
+      <a href="{{ url_for('backup_uploads') }}" class="nav-item {% if request.endpoint == 'backup_uploads' %}active{% endif %}">
+        <i class="bi bi-archive"></i><span>Respaldo Archivos</span>
+      </a>
+      {% endif %}
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar">{{ current_user.nombre[0].upper() }}</div>
+        <div>
+          <div class="user-name">{{ current_user.nombre }}</div>
+          <div class="user-role">
+            {% if current_user.rol == 'comercial' %}Comercial
+            {% elif current_user.rol == 'ingeniero' %}Ingeniero
+            {% elif current_user.rol == 'lider_comercial' %}Líder Comercial
+            {% elif current_user.rol == 'aux_comercial' %}Aux Comercial
+            {% elif current_user.rol == 'administrador' %}Administrador
+            {% else %}Líder de Soluciones{% endif %}
+          </div>
+        </div>
+      </div>
+      <a href="{{ url_for('logout') }}" class="btn-logout" title="Cerrar sesión">
+        <i class="bi bi-box-arrow-right"></i>
+      </a>
+    </div>
+  </aside>
+
+  <header class="topbar d-lg-none">
+    <button class="btn-menu" id="menuToggle"><i class="bi bi-list"></i></button>
+    <span class="topbar-brand">Seguimiento SD</span>
+    <div class="user-avatar-sm">{{ current_user.nombre[0].upper() }}</div>
+  </header>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for cat, msg in messages %}
+            <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+              <i class="bi bi-{% if cat == 'success' %}check-circle{% elif cat == 'danger' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
+              {{ msg }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+
+<script>
+// ── Multi-select genérico con Seleccionar todo ───────────────────────────
+function initMultiSelect(btnId, dropdownId) {
+  const btn = document.getElementById(btnId);
+  const dd  = document.getElementById(dropdownId);
+  if (!btn || !dd) return;
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = dd.style.display === 'block';
+    document.querySelectorAll('.estatus-dropdown').forEach(d => d.style.display='none');
+    dd.style.display = open ? 'none' : 'block';
+  });
+  const chkAll = dd.querySelector('.chk-select-all');
+  if (chkAll) {
+    chkAll.addEventListener('change', function() {
+      dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all)').forEach(c => {
+        c.checked = this.checked;
+        c.closest('label').classList.toggle('active', this.checked);
+      });
+      _syncAll(dd); _updateBtn(btn, dd);
+    });
+  }
+  dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all)').forEach(c => {
+    c.addEventListener('change', function() {
+      this.closest('label').classList.toggle('active', this.checked);
+      _syncAll(dd); _updateBtn(btn, dd);
+    });
+  });
+  _syncAll(dd); _updateBtn(btn, dd);
+}
+function _syncAll(dd) {
+  const all = dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all)');
+  const chk = dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all):checked');
+  const sa  = dd.querySelector('.chk-select-all');
+  if (!sa) return;
+  sa.checked = all.length > 0 && chk.length === all.length;
+  sa.indeterminate = chk.length > 0 && chk.length < all.length;
+}
+function _updateBtn(btn, dd) {
+  const chk = dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all):checked');
+  btn.textContent = chk.length > 0 ? chk.length + ' seleccionado(s)' : 'Todos';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.estatus-multi-wrap')) {
+    document.querySelectorAll('.estatus-dropdown').forEach(d => d.style.display='none');
+  }
+});
+</script>
+</body>
+</html>
