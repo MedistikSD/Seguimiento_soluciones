@@ -92,5 +92,54 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   {% block scripts %}{% endblock %}
+
+<script>
+// ── Multi-select genérico con Seleccionar todo ───────────────────────────
+function initMultiSelect(btnId, dropdownId) {
+  const btn = document.getElementById(btnId);
+  const dd  = document.getElementById(dropdownId);
+  if (!btn || !dd) return;
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = dd.style.display === 'block';
+    document.querySelectorAll('.estatus-dropdown').forEach(d => d.style.display='none');
+    dd.style.display = open ? 'none' : 'block';
+  });
+  const chkAll = dd.querySelector('.chk-select-all');
+  if (chkAll) {
+    chkAll.addEventListener('change', function() {
+      dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all)').forEach(c => {
+        c.checked = this.checked;
+        c.closest('label').classList.toggle('active', this.checked);
+      });
+      _syncAll(dd); _updateBtn(btn, dd);
+    });
+  }
+  dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all)').forEach(c => {
+    c.addEventListener('change', function() {
+      this.closest('label').classList.toggle('active', this.checked);
+      _syncAll(dd); _updateBtn(btn, dd);
+    });
+  });
+  _syncAll(dd); _updateBtn(btn, dd);
+}
+function _syncAll(dd) {
+  const all = dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all)');
+  const chk = dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all):checked');
+  const sa  = dd.querySelector('.chk-select-all');
+  if (!sa) return;
+  sa.checked = all.length > 0 && chk.length === all.length;
+  sa.indeterminate = chk.length > 0 && chk.length < all.length;
+}
+function _updateBtn(btn, dd) {
+  const chk = dd.querySelectorAll('input[type=checkbox]:not(.chk-select-all):checked');
+  btn.textContent = chk.length > 0 ? chk.length + ' seleccionado(s)' : 'Todos';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.estatus-multi-wrap')) {
+    document.querySelectorAll('.estatus-dropdown').forEach(d => d.style.display='none');
+  }
+});
+</script>
 </body>
 </html>

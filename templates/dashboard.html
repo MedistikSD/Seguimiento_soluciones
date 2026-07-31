@@ -22,7 +22,7 @@
       <!-- Multi-select dropdown -->
       <div class="estatus-multi-wrap">
         <button type="button" class="form-select form-select-sm text-start" id="btnEstatus"
-                onclick="toggleEstatus()" style="cursor:pointer">
+                id="btnEstatusDash" style="cursor:pointer">
           {% if f_estatus_list %}
             {{ f_estatus_list|length }} seleccionado(s)
           {% else %}
@@ -42,14 +42,43 @@
       </div>
     </div>
     {% if current_user.rol in ('lider_comercial','lider_soluciones','aux_comercial','administrador') %}
-    <div class="col-12 col-md-auto">
+    <!-- Comercial multi-select -->
+    <div class="col-12 col-md-auto" style="position:relative">
       <label class="form-label mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary)">Comercial</label>
-      <select name="f_comercial" class="form-select form-select-sm">
-        <option value="">Todos</option>
-        {% for c in comerciales_list %}
-        <option value="{{ c.id }}" {% if f_comercial == c.id|string %}selected{% endif %}>{{ c.nombre }}</option>
-        {% endfor %}
-      </select>
+      <div class="estatus-multi-wrap">
+        <button type="button" class="form-select form-select-sm text-start" id="btnComDash" style="cursor:pointer;min-width:160px">Todos</button>
+        <div class="estatus-dropdown" id="ddComDash" style="display:none">
+          <label class="estatus-opt">
+            <input type="checkbox" class="chk-select-all"> <em>Seleccionar todo</em>
+          </label>
+          {% for c in comerciales_list %}
+          <label class="estatus-opt {% if c.id|string in f_comercial_list %}active{% endif %}">
+            <input type="checkbox" name="f_comercial" value="{{ c.id }}"
+                   {% if c.id|string in f_comercial_list %}checked{% endif %}>
+            {{ c.nombre }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <!-- Ingeniero multi-select -->
+    <div class="col-12 col-md-auto" style="position:relative">
+      <label class="form-label mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary)">Ingeniero</label>
+      <div class="estatus-multi-wrap">
+        <button type="button" class="form-select form-select-sm text-start" id="btnIngDash" style="cursor:pointer;min-width:160px">Todos</button>
+        <div class="estatus-dropdown" id="ddIngDash" style="display:none">
+          <label class="estatus-opt">
+            <input type="checkbox" class="chk-select-all"> <em>Seleccionar todo</em>
+          </label>
+          {% for ing in ingenieros_list %}
+          <label class="estatus-opt {% if ing.id|string in f_ingeniero_list %}active{% endif %}">
+            <input type="checkbox" name="f_ingeniero" value="{{ ing.id }}"
+                   {% if ing.id|string in f_ingeniero_list %}checked{% endif %}>
+            {{ ing.nombre }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     {% endif %}
     <div class="col-12 col-md-auto">
@@ -65,12 +94,13 @@
       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filtrar</button>
       <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
     </div>
-    {% if f_estatus_list or f_comercial or f_tema %}
+    {% if f_estatus_list or f_comercial_list or f_ingeniero_list or f_tema %}
     <div class="col-12">
       <small class="text-muted">
         <i class="bi bi-funnel-fill me-1" style="color:var(--turquesa)"></i>Filtros activos:
         {% for e in f_estatus_list %}<span class="filter-chip">{{ e }}</span>{% endfor %}
-        {% if f_comercial %}{% for c in comerciales_list %}{% if c.id|string == f_comercial %}<span class="filter-chip">{{ c.nombre }}</span>{% endif %}{% endfor %}{% endif %}
+        {% for cid in f_comercial_list %}{% for c in comerciales_list %}{% if c.id|string == cid %}<span class="filter-chip">{{ c.nombre }}</span>{% endif %}{% endfor %}{% endfor %}
+        {% for iid in f_ingeniero_list %}{% for ing in ingenieros_list %}{% if ing.id|string == iid %}<span class="filter-chip">{{ ing.nombre }}</span>{% endif %}{% endfor %}{% endfor %}
         {% if f_tema %}<span class="filter-chip">{{ f_tema }}</span>{% endif %}
       </small>
     </div>
@@ -332,18 +362,10 @@ new Chart(document.getElementById('chartComercialMonto'), {
 });
 {% endif %}
 </script>
+
 <script>
-// ── Multi-select estatus ──────────────────────────────────────
-function toggleEstatus() {
-  const dd = document.getElementById('estatusDropdown');
-  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
-}
-// Close on click outside
-document.addEventListener('click', function(e) {
-  const wrap = document.querySelector('.estatus-multi-wrap');
-  if (wrap && !wrap.contains(e.target)) {
-    document.getElementById('estatusDropdown').style.display = 'none';
-  }
-});
+initMultiSelect('btnEstatusDash','estatusDropdown','f_estatus');
+initMultiSelect('btnComDash','ddComDash','f_comercial');
+initMultiSelect('btnIngDash','ddIngDash','f_ingeniero');
 </script>
 {% endblock %}

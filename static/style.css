@@ -1002,3 +1002,7 @@ hr { border-color: var(--bg-border); opacity: 1; }
   width: 15px; height: 15px; flex-shrink: 0;
   accent-color: var(--turquesa); cursor: pointer;
 }
+
+/* ── SELECT ALL OPTION ───────────────────────────────────────── */
+.estatus-opt em { color: var(--text-tertiary); font-style: italic; font-size: 12px; }
+.estatus-opt:has(.chk-select-all) { border-bottom: 1px solid var(--bg-border); margin-bottom: 2px; }

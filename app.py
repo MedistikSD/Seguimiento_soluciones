@@ -249,14 +249,17 @@ def dashboard():
     # Todos los roles ven TODAS las solicitudes en el dashboard
 
     # Filtros dashboard
-    f_estatus_list = request.args.getlist('f_estatus')  # múltiples valores
-    f_estatus  = f_estatus_list[0] if len(f_estatus_list)==1 else ''  # compatibilidad
-    f_comercial= request.args.get('f_comercial', '').strip()
-    f_tema     = request.args.get('f_tema', '').strip()
+    f_estatus_list   = request.args.getlist('f_estatus')
+    f_estatus        = f_estatus_list[0] if len(f_estatus_list)==1 else ''
+    f_comercial_list = request.args.getlist('f_comercial')
+    f_comercial      = f_comercial_list[0] if len(f_comercial_list)==1 else ''
+    f_ingeniero_list = request.args.getlist('f_ingeniero')
+    f_tema           = request.args.get('f_tema','').strip()
 
-    if f_estatus_list: q = q.filter(Solicitud.estatus.in_(f_estatus_list))
-    if f_comercial: q = q.join(User, Solicitud.hunter_id == User.id).filter(User.id == int(f_comercial))
-    if f_tema:      q = q.filter(Solicitud.tema == f_tema)
+    if f_estatus_list:   q = q.filter(Solicitud.estatus.in_(f_estatus_list))
+    if f_comercial_list: q = q.filter(Solicitud.hunter_id.in_([int(i) for i in f_comercial_list]))
+    if f_ingeniero_list: q = q.filter(Solicitud.responsable_id.in_([int(i) for i in f_ingeniero_list]))
+    if f_tema:           q = q.filter(Solicitud.tema == f_tema)
 
     todas = q.all()
     # Propuesta Enviada se trata como cerrada
@@ -344,7 +347,10 @@ def dashboard():
         por_comercial_count=por_comercial_count,
         por_ingeniero_data=por_ingeniero_data,
         f_estatus=f_estatus, f_estatus_list=f_estatus_list,
-        f_comercial=f_comercial, f_tema=f_tema)
+        f_comercial=f_comercial, f_comercial_list=f_comercial_list,
+        f_ingeniero_list=f_ingeniero_list,
+        f_tema=f_tema,
+        ingenieros_list=User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria']),User.activo==True).order_by(User.nombre).all())
 
 
 # ── Solicitudes ──────────────────────────────────────────────────────────────
@@ -352,13 +358,11 @@ def dashboard():
 @login_required
 def solicitudes():
     q = Solicitud.query
-    # administrador y lider_soluciones ven TODAS sin restricción
+    # administrador, lider_soluciones e ingenieros ven TODAS sin restricción
     if current_user.rol in ('lider_comercial','aux_comercial'):
         ids = [u.id for u in User.query.filter(User.rol.in_(['comercial','aux_comercial'])).all()]
         ids.append(current_user.id)
         q = q.filter(Solicitud.hunter_id.in_(ids))
-    elif current_user.rol in ('ingeniero','aux_ingenieria'):
-        q = q.filter(Solicitud.responsable_id == current_user.id)
 
     folio       = request.args.get('folio','').strip()
     cliente     = request.args.get('cliente','').strip()
@@ -368,24 +372,28 @@ def solicitudes():
     ingeniero_f = request.args.get('ingeniero','').strip()
     tema_f      = request.args.get('tema','').strip()
 
-    if folio:          q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
-    if cliente:        q = q.filter(Solicitud.cliente.ilike(f'%{cliente}%'))
-    if estatus_list_f: q = q.filter(Solicitud.estatus.in_(estatus_list_f))
-    if tema_f:      q = q.filter(Solicitud.tema == tema_f)
-    if comercial_f:
-        q = q.join(User, Solicitud.hunter_id == User.id).filter(User.nombre.ilike(f'%{comercial_f}%'))
-    if ingeniero_f:
-        ra = db.aliased(User)
-        q = q.join(ra, Solicitud.responsable_id == ra.id).filter(ra.nombre.ilike(f'%{ingeniero_f}%'))
+    comercial_ids_f  = request.args.getlist('f_comercial_id')
+    ingeniero_ids_f  = request.args.getlist('f_ingeniero_id')
+
+    if folio:           q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
+    if cliente:         q = q.filter(Solicitud.cliente.ilike(f'%{cliente}%'))
+    if estatus_list_f:  q = q.filter(Solicitud.estatus.in_(estatus_list_f))
+    if tema_f:          q = q.filter(Solicitud.tema == tema_f)
+    if comercial_ids_f: q = q.filter(Solicitud.hunter_id.in_([int(i) for i in comercial_ids_f]))
+    if ingeniero_ids_f: q = q.filter(Solicitud.responsable_id.in_([int(i) for i in ingeniero_ids_f]))
 
     lista      = q.order_by(Solicitud.fecha_captura.desc()).all()
     ingenieros = User.query.filter(User.rol.in_(['ingeniero','aux_ingenieria']), User.activo==True).all()
     estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
                     'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
                     'Liberada','Enviada','Cerrada']
+    comerciales_sol = User.query.filter(
+        User.rol.in_(['comercial','aux_comercial','lider_comercial']),
+        User.activo==True).order_by(User.nombre).all()
     return render_template('solicitudes.html', solicitudes=lista,
                            ingenieros=ingenieros, estatus_list=estatus_list,
-                           temas_list=get_temas())
+                           temas_list=get_temas(),
+                           comerciales_list=comerciales_sol)
 
 
 @app.route('/solicitudes/nueva', methods=['GET', 'POST'])
