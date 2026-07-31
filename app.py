@@ -1882,6 +1882,102 @@ def fix_duplicados():
             '<a href="/dashboard">Ir al Dashboard</a>'
             '</body></html>')
 
+
+@app.route('/admin/fix-usuarios-duplicados')
+@login_required
+@rol_requerido('administrador')
+def fix_usuarios_duplicados():
+    """Elimina usuarios duplicados manteniendo el de username correcto (con acentos/mayúsculas)."""
+    from werkzeug.security import generate_password_hash as gph
+
+    # Usuarios definitivos — el username correcto gana
+    DEFINITIVOS = {
+        'admin':                ('Administrador',       'administrador',    True,  'Admin2026!1'),
+        'Rubi_Arizmendi':       ('Rubi Arizmendi',      'aux_comercial',    True,  'AuxCom2026!1'),
+        'Aline_Esquivel':       ('Aline Esquivel',      'aux_ingenieria',   True,  'AuxCom2026!2'),
+        'Teresa_Ruiz':          ('Teresa Ruiz',         'comercial',        True,  'Hunter2026!1'),
+        'Alejandra_Sanchez':    ('Alejandra Sanchez',   'comercial',        True,  'Hunter2026!2'),
+        'Diana_Pelcastre':      ('Diana Pelcastre',     'comercial',        True,  'Hunter2026!3'),
+        'Ida_Acosta':           ('Ida Acosta',          'comercial',        True,  'Hunter2026!4'),
+        'Malena_Baltazar':      ('Malena Baltazar',     'comercial',        True,  'Hunter2026!5'),
+        'Jose_Ortega':          ('Jose Ortega',         'comercial',        True,  'Hunter2026!6'),
+        'Karla_Herrera':        ('Karla Herrera',       'comercial',        True,  'Hunter2026!7'),
+        'David_Fortoul':        ('David Fortoul',       'comercial',        True,  'Hunter2026!8'),
+        'Maria_Elena_Baltazar': ('Maria Elena Baltazar','comercial',        True,  'Hunter2026!9'),
+        'Genoveva_Roa':         ('Genoveva Roa',        'comercial',        True,  'Hunter2026!10'),
+        'Elizabeth_Bastida':    ('Elizabeth Bastida',   'ingeniero',        True,  'IngeSD2026!1'),
+        'Diego_Arzate':         ('Diego Arzate',        'ingeniero',        True,  'IngeSD2026!2'),
+        'Jorge_Camarena':       ('Jorge Camarena',      'ingeniero',        True,  'IngeSD2026!3'),
+        'Jose_Luis_Montes':     ('Jose Luis Montes',    'ingeniero',        False, 'IngeSD2026!4'),
+        'Gerardo_Velazquez':    ('Gerardo Velazquez',   'ingeniero',        True,  'IngeSD2026!5'),
+        'Francisco_Cueva':      ('Francisco Cueva',     'lider_comercial',  True,  'Lcomercial1231'),
+        'Andres_Toledo':        ('Andres Toledo',       'lider_soluciones', True,  'Lsoluciones1231'),
+    }
+
+    todos = User.query.all()
+    log = []
+    eliminados = 0
+    actualizados = 0
+
+    # Find users NOT in definitivos list (old/duplicate usernames)
+    usernames_validos = set(DEFINITIVOS.keys())
+    for u in todos:
+        if u.username not in usernames_validos:
+            # Check if there is a solicitud with this user as hunter or responsable
+            tiene_sols = (Solicitud.query.filter(
+                db.or_(Solicitud.hunter_id==u.id, Solicitud.responsable_id==u.id)
+            ).count() > 0)
+
+            if tiene_sols:
+                # Reassign solicitudes to correct user before deleting
+                # Find correct user by similar nombre
+                nombre_lower = u.nombre.lower().replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').replace('ñ','n')
+                correcto = None
+                for uname, (nombre, rol, activo, pwd) in DEFINITIVOS.items():
+                    nombre_def = nombre.lower()
+                    if nombre_lower == nombre_def:
+                        correcto = User.query.filter_by(username=uname).first()
+                        break
+
+                if correcto:
+                    Solicitud.query.filter_by(hunter_id=u.id).update({'hunter_id': correcto.id})
+                    Solicitud.query.filter_by(responsable_id=u.id).update({'responsable_id': correcto.id})
+                    SolicitudIngeniero.query.filter_by(ingeniero_id=u.id).update({'ingeniero_id': correcto.id})
+                    Bitacora.query.filter_by(usuario_id=u.id).update({'usuario_id': correcto.id})
+                    log.append('REASIGNADO ' + u.username + ' -> ' + correcto.username)
+                else:
+                    log.append('SIN MATCH para ' + u.username + ' (' + u.nombre + ')')
+                    continue
+
+            db.session.delete(u)
+            eliminados += 1
+            log.append('ELIMINADO ' + u.username)
+
+    # Update all valid users
+    for username, (nombre, rol, activo, pwd) in DEFINITIVOS.items():
+        u = User.query.filter_by(username=username).first()
+        if u:
+            u.nombre = nombre; u.rol = rol; u.activo = activo
+            u.password_hash = gph(pwd)
+            actualizados += 1
+
+    db.session.commit()
+
+    total = User.query.count()
+    rows = ''.join('<tr><td style="padding:5px 10px;border-bottom:1px solid #2a3040">' + l + '</td></tr>' for l in log)
+    return ('<html><head><meta charset="UTF-8"><style>'
+            'body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px}'
+            'table{border-collapse:collapse;width:100%;font-size:12px}'
+            'h2{color:#4BB8C8}a{color:#4BB8C8}</style></head><body>'
+            '<h2>Usuarios limpiados</h2>'
+            '<p>Eliminados: <b>' + str(eliminados) + '</b> | '
+            'Actualizados: <b>' + str(actualizados) + '</b> | '
+            'Total actual: <b>' + str(total) + '</b></p>'
+            '<table>' + rows + '</table>'
+            '<br><a href="/admin/usuarios">Ver usuarios</a> '
+            '<a href="/dashboard">Dashboard</a>'
+            '</body></html>')
+
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
