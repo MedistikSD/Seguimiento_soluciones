@@ -303,7 +303,7 @@ estatusRaw.forEach((label, i) => {
   if (cantidadRaw[i] > 0) {
     estatusLabels.push(label);
     estatusDatos.push(cantidadRaw[i]);
-    estatusColors.push(COLORS[i % COLORS.length]);
+    estatusColors.push(STATUS_COLORS[label] || "#6B7280");
   }
 });
 
