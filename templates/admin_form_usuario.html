@@ -37,7 +37,7 @@
             <input type="text" name="username" class="form-control"
                    value="{{ usuario.username if usuario else '' }}"
                    placeholder="ej. jperez (sin espacios, minúsculas)"
-                   pattern="[a-z0-9_]+" title="Solo letras minúsculas, números y guión bajo"
+                   pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ0-9_]+" title="Letras, números y guión bajo"
                    required {% if accion == 'editar' %}id="inputUsername"{% endif %}>
             {% if accion == 'editar' %}
             <div class="form-text">
@@ -45,7 +45,7 @@
               Si cambias el usuario, la persona deberá usar el nuevo nombre para iniciar sesión.
             </div>
             {% else %}
-            <div class="form-text">Solo letras minúsculas, números y guión bajo. Sin espacios.</div>
+            <div class="form-text">Letras, números y guión bajo. Sin espacios. Ej: Aldo_González</div>
             {% endif %}
           </div>
 
@@ -166,11 +166,10 @@ inputUsername.addEventListener('input', () => { userModificado = true; });
 inputNombre.addEventListener('input', () => {
   if (userModificado) return;
   const slug = inputNombre.value
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quita acentos
+    .trim()
     .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '')
-    .substring(0, 20);
+    .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ0-9_]/g, '')
+    .substring(0, 30);
   inputUsername.value = slug;
 });
 </script>
