@@ -604,7 +604,7 @@
           {% endif %}
         {% endif %}
       </div>
-      {% set docs_pf = sol.documentos.filter_by(tipo_documento='propuesta_final').order_by(Documento.version.desc()).all() %}
+      {% set docs_pf = docs_propuesta_final %}
       {% if docs_pf %}
       <div class="table-responsive">
         <table class="table table-hover mb-0" style="font-size:13px">

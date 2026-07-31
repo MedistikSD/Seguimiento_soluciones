@@ -554,8 +554,13 @@ def detalle_solicitud(folio):
     estatus_list = ['Asignada','En Análisis','Pendiente de Información','Información Completa',
                     'En Proceso','Revisada por Área Comercial','Pendiente de Liberación DG',
                     'Liberada','Enviada','Cerrada']
+    from models import Documento
+    docs_propuesta_final = (Documento.query
+        .filter_by(solicitud_id=sol.id, tipo_documento='propuesta_final')
+        .order_by(Documento.version.desc()).all())
     return render_template('detalle_solicitud.html', sol=sol,
-                           ingenieros=ingenieros, estatus_list=estatus_list)
+                           ingenieros=ingenieros, estatus_list=estatus_list,
+                           docs_propuesta_final=docs_propuesta_final)
 
 
 @app.route('/solicitudes/<folio>/actualizar', methods=['POST'])
