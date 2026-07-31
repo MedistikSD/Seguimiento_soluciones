@@ -1836,6 +1836,44 @@ def carga_v2():
     return 'Paso no valido', 400
 
 
+
+@app.route('/admin/fix-duplicados')
+@login_required
+@rol_requerido('administrador')
+def fix_duplicados():
+    """Elimina solicitudes duplicadas manteniendo la primera ocurrencia por cliente+tema+fecha."""
+    from sqlalchemy import func
+    
+    # Find duplicates - keep lowest id per cliente+tema+fecha_solicitud
+    todas = Solicitud.query.order_by(Solicitud.id.asc()).all()
+    
+    vistos = {}
+    a_eliminar = []
+    for s in todas:
+        key = (s.cliente.strip().lower(), s.tema.strip().lower(), str(s.fecha_solicitud))
+        if key in vistos:
+            a_eliminar.append(s)
+        else:
+            vistos[key] = s.id
+
+    eliminadas = 0
+    for s in a_eliminar:
+        Bitacora.query.filter_by(solicitud_id=s.id).delete()
+        SolicitudIngeniero.query.filter_by(solicitud_id=s.id).delete()
+        db.session.delete(s)
+        eliminadas += 1
+
+    db.session.commit()
+    total = Solicitud.query.count()
+    return ('<html><head><meta charset="UTF-8"><style>'
+            'body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px}'
+            'h2{color:#4BB8C8}a{color:#4BB8C8}</style></head><body>'
+            '<h2>Duplicados eliminados</h2>'
+            '<p>Eliminadas: <b>' + str(eliminadas) + '</b> solicitudes duplicadas.</p>'
+            '<p>Total restante: <b>' + str(total) + '</b> solicitudes.</p>'
+            '<a href="/dashboard">Ir al Dashboard</a>'
+            '</body></html>')
+
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
