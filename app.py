@@ -1275,38 +1275,6 @@ def subir_propuesta_final(folio):
     flash(f'Propuesta final v{version} subida correctamente.', 'success')
     return redirect(url_for('detalle_solicitud', folio=folio) + '#archivos')
 
-
-@app.route('/admin/debug-startup')
-@login_required
-@rol_requerido('administrador')
-def debug_startup():
-    """Ruta temporal para diagnosticar errores de startup."""
-    from sqlalchemy import text, inspect
-    results = {}
-    try:
-        with db.engine.connect() as conn:
-            # Check tables exist
-            inspector = inspect(db.engine)
-            tables = inspector.get_table_names()
-            results['tables'] = tables
-
-            # Check columns in solicitudes
-            if 'solicitudes' in tables:
-                cols = [c['name'] for c in inspector.get_columns('solicitudes')]
-                results['solicitudes_cols'] = cols
-
-            # Check solicitud_ingenieros
-            if 'solicitud_ingenieros' in tables:
-                cols_si = [c['name'] for c in inspector.get_columns('solicitud_ingenieros')]
-                results['solicitud_ingenieros_cols'] = cols_si
-            else:
-                results['solicitud_ingenieros'] = 'TABLE MISSING'
-
-    except Exception as e:
-        results['error'] = str(e)
-
-    return jsonify(results)
-
 # ── Acciones en lote ──────────────────────────────────────────────────────────
 @app.route('/solicitudes/accion-lote', methods=['POST'])
 @login_required
@@ -1670,74 +1638,6 @@ def init_db():
         db.session.commit()
         print('Admin creado. Ejecuta /admin/reset-passwords para cargar usuarios.')
 
-
-
-
-@app.route('/admin/reset-passwords')
-@login_required
-@rol_requerido('administrador')
-def reset_passwords():
-    from werkzeug.security import generate_password_hash as gph
-    USUARIOS = [
-        ('Administrador',       'admin',                'administrador',    True,  'Admin2026!1'),
-        ('Rubi Arizmendi',      'Rubi_Arizmendi',       'aux_comercial',    True,  'AuxCom2026!1'),
-        ('Aline Esquivel',      'Aline_Esquivel',       'aux_ingenieria',   True,  'AuxCom2026!2'),
-        ('Teresa Ruiz',         'Teresa_Ruiz',          'comercial',        True,  'Hunter2026!1'),
-        ('Alejandra Sanchez',   'Alejandra_Sanchez',    'comercial',        True,  'Hunter2026!2'),
-        ('Diana Pelcastre',     'Diana_Pelcastre',      'comercial',        True,  'Hunter2026!3'),
-        ('Ida Acosta',          'Ida_Acosta',           'comercial',        True,  'Hunter2026!4'),
-        ('Malena Baltazar',     'Malena_Baltazar',      'comercial',        True,  'Hunter2026!5'),
-        ('Jose Ortega',         'Jose_Ortega',          'comercial',        True,  'Hunter2026!6'),
-        ('Karla Herrera',       'Karla_Herrera',        'comercial',        True,  'Hunter2026!7'),
-        ('David Fortoul',       'David_Fortoul',        'comercial',        True,  'Hunter2026!8'),
-        ('Maria Elena Baltazar','Maria_Elena_Baltazar', 'comercial',        True,  'Hunter2026!9'),
-        ('Genoveva Roa',        'Genoveva_Roa',         'comercial',        True,  'Hunter2026!10'),
-        ('Elizabeth Bastida',   'Elizabeth_Bastida',    'ingeniero',        True,  'IngeSD2026!1'),
-        ('Diego Arzate',        'Diego_Arzate',         'ingeniero',        True,  'IngeSD2026!2'),
-        ('Jorge Camarena',      'Jorge_Camarena',       'ingeniero',        True,  'IngeSD2026!3'),
-        ('Jose Luis Montes',    'Jose_Luis_Montes',     'ingeniero',        False, 'IngeSD2026!4'),
-        ('Gerardo Velazquez',   'Gerardo_Velazquez',    'ingeniero',        True,  'IngeSD2026!5'),
-        ('Francisco Cueva',     'Francisco_Cueva',      'lider_comercial',  True,  'Lcomercial1231'),
-        ('Andres Toledo',       'Andres_Toledo',        'lider_soluciones', True,  'Lsoluciones1231'),
-    ]
-    log = []
-    for nombre, username, rol, activo, pwd in USUARIOS:
-        u = User.query.filter(db.or_(User.nombre==nombre, User.username==username)).first()
-        if u:
-            u.nombre=nombre; u.username=username; u.rol=rol
-            u.activo=activo; u.password_hash=gph(pwd)
-            log.append('UPD|'+nombre+'|'+username+'|'+rol+'|'+pwd)
-        else:
-            db.session.add(User(nombre=nombre,username=username,rol=rol,
-                activo=activo,password_hash=gph(pwd)))
-            log.append('NEW|'+nombre+'|'+username+'|'+rol+'|'+pwd)
-    db.session.commit()
-    rows=''.join('<tr>'+''.join('<td style="padding:6px 10px;border-bottom:1px solid #2a3040">'+c+'</td>' for c in l.split('|'))+'</tr>' for l in log)
-    return ('<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px}'
-            'table{border-collapse:collapse;width:100%;font-size:12px}th{color:#4BB8C8;padding:8px 10px;border-bottom:2px solid #4BB8C8;text-align:left}'
-            'h2{color:#4BB8C8}a{color:#4BB8C8;margin-right:12px}</style></head><body>'
-            '<h2>Usuarios sincronizados</h2><table><tr><th>Accion</th><th>Nombre</th><th>Username</th><th>Rol</th><th>Password</th></tr>'
-            +rows+'</table><br><a href="/admin/carga-v2">Cargar solicitudes</a><a href="/dashboard">Dashboard</a></body></html>')
-
-
-@app.route('/admin/carga-v2')
-@login_required
-@rol_requerido('administrador')
-def carga_v2():
-    from openpyxl import load_workbook as lw
-    from datetime import datetime as dt2, date as date2
-    paso = request.args.get('paso', 'menu')
-    lote = int(request.args.get('lote', 0))
-    TAM  = 20
-    CSS  = ('<style>body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px;max-width:900px}'
-            '.btn{background:#4BB8C8;color:#000;border:none;padding:10px 22px;font-size:14px;font-weight:700;'
-            'border-radius:6px;cursor:pointer;text-decoration:none;display:inline-block;margin:6px}'
-            '.g{background:#7fad00;color:#000}'
-            'pre{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:16px;font-size:12px;'
-            'max-height:420px;overflow:auto;white-space:pre-wrap}'
-            '.card{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:20px;margin:12px 0}'
-            'h2{color:#4BB8C8}h3{color:#aeca00}</style>')
-
     if paso == 'menu':
         tu = User.query.count()
         ts = Solicitud.query.count()
@@ -1843,27 +1743,6 @@ def carga_v2():
 
     return 'Paso no valido', 400
 
-
-
-@app.route('/admin/fix-duplicados')
-@login_required
-@rol_requerido('administrador')
-def fix_duplicados():
-    """Elimina solicitudes duplicadas manteniendo la primera ocurrencia por cliente+tema+fecha."""
-    from sqlalchemy import func
-    
-    # Find duplicates - keep lowest id per cliente+tema+fecha_solicitud
-    todas = Solicitud.query.order_by(Solicitud.id.asc()).all()
-    
-    vistos = {}
-    a_eliminar = []
-    for s in todas:
-        key = (s.cliente.strip().lower(), s.tema.strip().lower(), str(s.fecha_solicitud))
-        if key in vistos:
-            a_eliminar.append(s)
-        else:
-            vistos[key] = s.id
-
     eliminadas = 0
     for s in a_eliminar:
         Bitacora.query.filter_by(solicitud_id=s.id).delete()
@@ -1881,15 +1760,6 @@ def fix_duplicados():
             '<p>Total restante: <b>' + str(total) + '</b> solicitudes.</p>'
             '<a href="/dashboard">Ir al Dashboard</a>'
             '</body></html>')
-
-
-@app.route('/admin/fix-usuarios-duplicados')
-@login_required
-@rol_requerido('administrador')
-def fix_usuarios_duplicados():
-    """Elimina usuarios duplicados manteniendo el de username correcto (con acentos/mayúsculas)."""
-    from werkzeug.security import generate_password_hash as gph
-
     # Usuarios definitivos — el username correcto gana
     DEFINITIVOS = {
         'admin':                ('Administrador',       'administrador',    True,  'Admin2026!1'),
@@ -1977,6 +1847,236 @@ def fix_usuarios_duplicados():
             '<br><a href="/admin/usuarios">Ver usuarios</a> '
             '<a href="/dashboard">Dashboard</a>'
             '</body></html>')
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── CARGA MASIVA PERMANENTE ───────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/admin/carga-masiva', methods=['GET','POST'])
+@login_required
+@rol_requerido('administrador')
+def carga_masiva():
+    CSS = ('<style>body{font-family:Arial;background:#0f172a;color:#e2e8f0;padding:30px;max-width:900px}'
+           '.btn{background:#4BB8C8;color:#000;border:none;padding:10px 22px;font-size:14px;'
+           'font-weight:700;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-block;margin:6px}'
+           '.g{background:#7fad00;color:#000}'
+           'pre{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:16px;'
+           'font-size:12px;max-height:450px;overflow:auto;white-space:pre-wrap}'
+           '.card{background:#161b22;border:1px solid #2a3040;border-radius:8px;padding:20px;margin:12px 0}'
+           'h2{color:#4BB8C8}h3{color:#aeca00}'
+           'input[type=file]{background:#1a2234;border:2px dashed #4BB8C8;border-radius:8px;'
+           'padding:20px;width:100%;color:#e2e8f0;cursor:pointer;display:block}'
+           '</style>')
+
+    if request.method == 'GET':
+        ts = Solicitud.query.count()
+        return (CSS + '<h2>Carga Masiva de Solicitudes</h2>'
+                '<div class="card">'
+                '<p style="color:#94A3B8;margin-bottom:16px">Solicitudes actuales en sistema: <b style="color:#4BB8C8">'
+                + str(ts) + '</b></p>'
+                '<h3>Paso 1 — Descarga la plantilla</h3>'
+                '<a class="btn" href="/admin/carga-masiva/plantilla">⬇ Descargar plantilla Excel</a>'
+                '</div>'
+                '<div class="card">'
+                '<h3>Paso 2 — Sube el Excel completado</h3>'
+                '<form method="POST" enctype="multipart/form-data">'
+                '<input type="file" name="archivo" accept=".xlsx" required style="margin-bottom:16px">'
+                '<button class="btn g" type="submit">▶ Cargar solicitudes</button>'
+                '</form></div>'
+                '<a class="btn" style="background:#334155;color:#e2e8f0" href="/dashboard">← Dashboard</a>')
+
+    # POST
+    archivo = request.files.get('archivo')
+    if not archivo or archivo.filename == '':
+        flash('Selecciona un archivo .xlsx.', 'danger')
+        return redirect(url_for('carga_masiva'))
+
+    from openpyxl import load_workbook
+    from datetime import datetime as dt, date as date2
+    import io
+
+    EMAP = {'Entregado':'Cerrada','Pendiente':'Pendiente de Información',
+            'On Hold':'Pendiente de Información','En proceso':'En Proceso'}
+
+    def pf(v):
+        if not v: return None
+        if isinstance(v, dt): return v.date()
+        if isinstance(v, date2): return v
+        for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y'):
+            try: return dt.strptime(str(v).strip(), fmt).date()
+            except: pass
+        return None
+
+    def ck(v):
+        return bool(v) and str(v).strip().lower() in ('sí','si','yes','1','true','x')
+
+    try:
+        wb = load_workbook(io.BytesIO(archivo.read()), data_only=True)
+        ws = wb['Solicitudes'] if 'Solicitudes' in wb.sheetnames else wb.active
+    except Exception as e:
+        flash('Error al leer el archivo: ' + str(e), 'danger')
+        return redirect(url_for('carga_masiva'))
+
+    ubn     = {u.nombre: u for u in User.query.all()}
+    admin_u = User.query.filter_by(username='admin').first()
+
+    def nuevo_folio_cm():
+        ultima = (Solicitud.query.filter(Solicitud.folio.like('SOL-2026-%'))
+                  .order_by(Solicitud.id.desc()).first())
+        num = int(ultima.folio.split('-')[-1]) + 1 if ultima else 1
+        return 'SOL-2026-' + str(num).zfill(4)
+
+    log = []; ok = 0; skip = 0; warn = []
+
+    for row in range(5, ws.max_row + 1):
+        r = [ws.cell(row, c).value for c in range(1, 15)]
+        cliente = str(r[2]).strip() if r[2] else ''
+        if not cliente: skip += 1; continue
+
+        hunter_n = str(r[0]).strip() if r[0] else ''
+        hunter   = ubn.get(hunter_n, admin_u) or admin_u
+        if not ubn.get(hunter_n):
+            warn.append('Fila ' + str(row) + ': hunter "' + hunter_n + '" no encontrado → admin')
+
+        resp_n = str(r[9]).strip() if r[9] else ''
+        resp   = ubn.get(resp_n) if resp_n and resp_n.lower() != 'sin asignar' else None
+        tema   = str(r[3]).strip() if r[3] else 'Sin definir'
+        subtipo = str(r[4]).strip() if r[4] else None
+        if subtipo and not any(p in tema.lower() for p in ['transporte','almacenaje']):
+            subtipo = None
+
+        monto = None
+        if r[5]:
+            try: monto = float(str(r[5]).replace(',','').replace('$','').strip())
+            except: warn.append('Fila ' + str(row) + ': monto inválido')
+
+        status_r = str(r[8]).strip() if r[8] else ''
+        estatus  = EMAP.get(status_r, 'Asignada')
+        f_sol    = pf(r[1]); f_comp = pf(r[6]); f_ent = pf(r[7])
+        ahora    = dt.now()
+        f_cap    = dt.combine(f_sol, dt.min.time()) if f_sol else ahora
+
+        sol = Solicitud(
+            folio=nuevo_folio_cm(), hunter_id=hunter.id,
+            responsable_id=resp.id if resp else None,
+            fecha_solicitud=f_sol or date2(2026,1,1),
+            fecha_captura=f_cap, ultima_actualizacion=f_cap,
+            cliente=cliente, tema=tema, subtipo=subtipo,
+            monto_oportunidad=monto,
+            comentarios_comerciales=str(r[13]).strip() if r[13] else '',
+            estatus=estatus, fecha_compromiso=f_comp,
+            cuestionario_logistico=ck(r[10]),
+            inventario=ck(r[11]),
+            maestro_productos=ck(r[12]),
+            prioridad=None, prioridad_estado='pendiente',
+        )
+        if estatus == 'Cerrada':
+            c = dt.combine(f_ent, dt.min.time()) if f_ent else ahora
+            sol.fecha_cierre=c; sol.usuario_cierre_id=admin_u.id
+            sol.fecha_envio_cliente=c; sol.usuario_envio_id=admin_u.id
+            sol.ultima_actualizacion=c
+
+        db.session.add(sol); db.session.flush()
+        db.session.add(Bitacora(solicitud_id=sol.id, usuario_id=admin_u.id,
+            accion='Carga masiva. Status: ' + status_r))
+        if resp:
+            db.session.add(SolicitudIngeniero(
+                solicitud_id=sol.id, ingeniero_id=resp.id, es_principal=True))
+
+        monto_str = ' | $' + '{:,.0f}'.format(monto) if monto else ''
+        log.append('OK ' + sol.folio + ' | ' + cliente[:35] + ' | ' + estatus + monto_str)
+        ok += 1
+
+    db.session.commit()
+    ts = Solicitud.query.count()
+    log += ['', str(ok) + ' insertadas | ' + str(skip) + ' omitidas | Total BD: ' + str(ts)]
+    if warn:
+        log += ['', 'Advertencias:'] + warn
+
+    return (CSS + '<h2>Carga completada</h2><pre>' + chr(10).join(log) + '</pre>'
+            '<a class="btn g" href="/dashboard">Dashboard</a>'
+            ' <a class="btn" href="/admin/carga-masiva">Nueva carga</a>')
+
+
+@app.route('/admin/carga-masiva/plantilla')
+@login_required
+@rol_requerido('administrador')
+def descargar_plantilla_carga():
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.worksheet.datavalidation import DataValidation
+    import io
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Solicitudes'
+    TURQ='4BB8C8'; VERD='7FAD00'; DARK='0F172A'; GRIS='1A2332'
+    thin=Side(style='thin',color='CBD5E1')
+    brd=Border(top=thin,bottom=thin,left=thin,right=thin)
+
+    ws.merge_cells('A1:N1')
+    ws['A1']='Seguimiento SD — Plantilla de Carga Masiva'
+    ws['A1'].font=Font(bold=True,size=13,color='FFFFFF',name='Calibri')
+    ws['A1'].fill=PatternFill('solid',fgColor=DARK)
+    ws['A1'].alignment=Alignment(horizontal='center',vertical='center')
+    ws.row_dimensions[1].height=26
+
+    ws.merge_cells('A2:N2')
+    ws['A2']='Campos con * son obligatorios  •  No modificar encabezados  •  Datos desde fila 5'
+    ws['A2'].font=Font(italic=True,size=10,color='64748B',name='Calibri')
+    ws['A2'].fill=PatternFill('solid',fgColor='F1F5F9')
+    ws['A2'].alignment=Alignment(horizontal='center')
+    ws.row_dimensions[2].height=16
+
+    COLS=[
+        ('A','Hunter *',22,TURQ,'Nombre del comercial igual que en el sistema'),
+        ('B','Fecha solicitud *',18,TURQ,'Formato: DD/MM/YYYY'),
+        ('C','Cliente *',28,TURQ,'Nombre del cliente o prospecto'),
+        ('D','Tema *',26,TURQ,'Reingeniería, Transporte, Almacenaje, VAS...'),
+        ('E','Subtipo',13,GRIS,'RFQ / RFI / RFP (solo si aplica)'),
+        ('F','Monto oportunidad MXN',22,VERD,'Solo número sin $ ni comas. Ej: 250000'),
+        ('G','F. Compromiso',18,GRIS,'DD/MM/YYYY'),
+        ('H','F. Entrega efectiva',18,GRIS,'DD/MM/YYYY (si ya fue entregado)'),
+        ('I','Status *',20,TURQ,'Entregado / En proceso / Pendiente / On Hold'),
+        ('J','Responsable (Ing.)',24,GRIS,'Nombre del ingeniero igual que en el sistema'),
+        ('K','Cuestionario log.',16,GRIS,'Sí / No'),
+        ('L','Inventario',13,GRIS,'Sí / No'),
+        ('M','Maestro productos',16,GRIS,'Sí / No'),
+        ('N','Comentarios',32,GRIS,'Último comentario o nota'),
+    ]
+    for col,hdr,w,color,nota in COLS:
+        c=ws[col+'3']
+        c.value=hdr; c.font=Font(bold=True,size=11,color='FFFFFF',name='Calibri')
+        c.fill=PatternFill('solid',fgColor=color)
+        c.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+        c.border=brd; ws.column_dimensions[col].width=w
+        n=ws[col+'4']
+        n.value=nota; n.font=Font(italic=True,size=9,color='64748B',name='Calibri')
+        n.fill=PatternFill('solid',fgColor='F8FAFC')
+        n.alignment=Alignment(horizontal='center',wrap_text=True); n.border=brd
+    ws.row_dimensions[3].height=30; ws.row_dimensions[4].height=26
+
+    for row in range(5,205):
+        fill=PatternFill('solid',fgColor=('F8FAFC' if row%2==0 else 'FFFFFF'))
+        for col,_,_,_,_ in COLS:
+            ws[col+str(row)].fill=fill
+            ws[col+str(row)].border=brd
+            ws[col+str(row)].alignment=Alignment(vertical='center')
+        ws.row_dimensions[row].height=17
+
+    for sqref,formula in [('I5:I204','"Entregado,En proceso,Pendiente,On Hold"'),
+                           ('E5:E204','"RFQ,RFI,RFP"'),('K5:M204','"Sí,No"')]:
+        dv=DataValidation(type='list',formula1=formula,allow_blank=True)
+        ws.add_data_validation(dv); dv.sqref=sqref
+    ws.freeze_panes='A5'
+
+    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    from flask import send_file
+    return send_file(buf,as_attachment=True,
+                     download_name='Plantilla_CargaMasiva_SeguimientoSD.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 5000))

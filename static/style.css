@@ -1006,3 +1006,15 @@ hr { border-color: var(--bg-border); opacity: 1; }
 /* ── SELECT ALL OPTION ───────────────────────────────────────── */
 .estatus-opt em { color: var(--text-tertiary); font-style: italic; font-size: 12px; }
 .estatus-opt:has(.chk-select-all) { border-bottom: 1px solid var(--bg-border); margin-bottom: 2px; }
+
+/* ── BADGES 10 ESTATUS ───────────────────────────────────────── */
+.badge.estatus-Asignada                    { background:rgba(100,116,139,.2); color:#94A3B8; }
+.badge.estatus-En_Análisis                 { background:rgba(59,130,246,.2);  color:#60A5FA; }
+.badge.estatus-Pendiente_de_Información    { background:rgba(245,158,11,.2);  color:#F59E0B; }
+.badge.estatus-Información_Completa        { background:rgba(75,184,200,.2);  color:#4BB8C8; }
+.badge.estatus-En_Proceso                  { background:rgba(139,92,246,.2);  color:#A78BFA; }
+.badge.estatus-Revisada_por_Área_Comercial { background:rgba(14,165,233,.2);  color:#38BDF8; }
+.badge.estatus-Pendiente_de_Liberación_DG  { background:rgba(249,115,22,.2);  color:#FB923C; }
+.badge.estatus-Liberada                    { background:rgba(127,173,0,.2);   color:#AECA00; }
+.badge.estatus-Enviada                     { background:rgba(16,185,129,.2);  color:#34D399; }
+.badge.estatus-Cerrada                     { background:rgba(239,68,68,.15);  color:#F87171; }

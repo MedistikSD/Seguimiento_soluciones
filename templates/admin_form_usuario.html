@@ -37,7 +37,7 @@
             <input type="text" name="username" class="form-control"
                    value="{{ usuario.username if usuario else '' }}"
                    placeholder="ej. jperez (sin espacios, minúsculas)"
-                   pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ0-9_]+" title="Letras, números y guión bajo"
+                   pattern="[a-z0-9_]+" title="Solo letras minúsculas, números y guión bajo"
                    required {% if accion == 'editar' %}id="inputUsername"{% endif %}>
             {% if accion == 'editar' %}
             <div class="form-text">
@@ -165,12 +165,12 @@ inputUsername.addEventListener('input', () => { userModificado = true; });
 
 inputNombre.addEventListener('input', () => {
   if (userModificado) return;
-  // Genera Nombre_Apellido preservando mayúsculas y acentos
   const slug = inputNombre.value
-    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quita acentos
     .replace(/\s+/g, '_')
-    .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ0-9_]/g, '')
-    .substring(0, 30);
+    .replace(/[^a-z0-9_]/g, '')
+    .substring(0, 20);
   inputUsername.value = slug;
 });
 </script>

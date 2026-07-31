@@ -14,6 +14,9 @@
   <div>
     <h2 class="page-title">
       <span class="folio-badge folio-lg">{{ sol.folio }}</span>
+      {% if sol.solicitud_origen_id %}
+      <span class="ms-2" style="background:rgba(245,158,11,.15);color:#F59E0B;border:1px solid rgba(245,158,11,.3);font-size:11px;font-weight:700;padding:2px 10px;border-radius:4px;"><i class="bi bi-arrow-repeat me-1"></i>Retrabajo</span>
+      {% endif %}
       <span class="ms-2 badge estatus-{{ sol.estatus|replace(' ','_') }} fs-6">{{ sol.estatus }}</span>
     </h2>
     <p class="page-sub">{{ sol.cliente }} · Creada el {{ sol.fecha_captura.strftime('%d/%m/%Y') }}</p>
@@ -253,6 +256,38 @@
             <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
           </div>
         </form>
+
+        <!-- Ingenieros colaboradores -->
+        {% if puede_lider_sol %}
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ingenieros colaboradores</label>
+          {% for a in sol.ingenieros_asignados.all() %}
+            {% if not a.es_principal %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="badge" style="background:rgba(75,184,200,.15);color:var(--turquesa);font-size:12px">
+                {{ a.ingeniero.nombre }}
+              </span>
+              <form method="POST" action="{{ url_for('quitar_ingeniero', folio=sol.folio, si_id=a.id) }}"
+                    style="display:inline" onsubmit="return confirm('¿Quitar colaborador?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1">✕</button>
+              </form>
+            </div>
+            {% endif %}
+          {% endfor %}
+          <form method="POST" action="{{ url_for('agregar_ingeniero', folio=sol.folio) }}" class="d-flex gap-2 mt-1">
+            <select name="ingeniero_id" class="form-select form-select-sm">
+              <option value="">— Agregar colaborador —</option>
+              {% for ing in ingenieros %}
+                {% if not sol.ingenieros_asignados.filter_by(ingeniero_id=ing.id).first() %}
+                <option value="{{ ing.id }}">{{ ing.nombre }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-primary flex-shrink-0">+</button>
+          </form>
+        </div>
+        {% endif %}
+
         <!-- Flujo de prioridad 3 pasos -->
         <div class="prio-flow mb-3">
           <div class="prio-flow-title"><i class="bi bi-sort-numeric-up me-1"></i>Flujo de Prioridad</div>
@@ -548,6 +583,53 @@
 
   {% endfor %}
 
+  <!-- ── PROPUESTA FINAL ──────────────────────────────── -->
+  <div class="col-12">
+    <div class="section-card" style="border:1px solid rgba(174,202,0,.25)">
+      <div class="section-card-header" style="background:rgba(174,202,0,.06)">
+        <h5 class="mb-0" style="color:var(--verde)">
+          <i class="bi bi-send-check me-2"></i>Propuesta Final enviada al cliente
+          {% set n_prop = sol.documentos.filter_by(tipo_documento='propuesta_final').count() %}
+          <span class="ms-2 text-muted" style="font-size:12px;font-weight:400">{{ n_prop }}/6 versiones</span>
+        </h5>
+        {% if current_user.rol in ('comercial','lider_comercial','administrador') %}
+          {% if n_prop < 6 or current_user.rol in ('lider_comercial','administrador') %}
+          <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPropuestaFinal">
+            <i class="bi bi-upload me-1"></i>Subir versión
+          </button>
+          {% else %}
+          <span class="text-warning" style="font-size:12px">
+            <i class="bi bi-lock me-1"></i>Límite alcanzado — solo Líder Comercial puede autorizar
+          </span>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% set docs_pf = sol.documentos.filter_by(tipo_documento='propuesta_final').order_by('version desc').all() %}
+      {% if docs_pf %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="font-size:13px">
+          <thead><tr><th>Versión</th><th>Archivo</th><th>Subido por</th><th>Fecha</th><th></th></tr></thead>
+          <tbody>
+            {% for doc in docs_pf %}
+            <tr>
+              <td><span class="version-badge">v{{ doc.version }}</span></td>
+              <td>{{ doc.nombre_original }}</td>
+              <td>{{ doc.usuario.nombre if doc.usuario else '—' }}</td>
+              <td>{{ doc.fecha_subida.strftime('%d/%m/%Y %H:%M') if doc.fecha_subida else '—' }}</td>
+              <td><a href="{{ url_for('descargar_documento', doc_id=doc.id) }}" class="btn btn-xs btn-outline-primary"><i class="bi bi-download"></i></a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4">
+        <i class="bi bi-send fs-2 d-block mb-2 opacity-25"></i>Sin propuestas cargadas aún.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
 </div><!-- /row archivos -->
 </div><!-- /tab-pane archivos -->
 
@@ -711,6 +793,41 @@
 {% endif %}
 
 </div><!-- /tab-content -->
+
+<!-- Modal subir propuesta final -->
+{% if current_user.rol in ('comercial','lider_comercial','administrador') %}
+<div class="modal fade" id="modalPropuestaFinal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:var(--bg-card);border:1px solid var(--bg-border)">
+      <div class="modal-header" style="border-color:var(--bg-border)">
+        <h5 class="modal-title" style="color:var(--verde)">
+          <i class="bi bi-send-check me-2"></i>Subir propuesta final
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter:invert(1)"></button>
+      </div>
+      <form method="POST" action="{{ url_for('subir_propuesta_final', folio=sol.folio) }}" enctype="multipart/form-data">
+        <div class="modal-body">
+          <label class="form-label required">Archivo de propuesta</label>
+          <div class="dropzone dropzone-sm" onclick="this.querySelector('input').click()">
+            <input type="file" name="archivo" required
+                   accept=".pdf,.xlsx,.xls,.pptx,.docx,.png,.jpg,.zip"
+                   style="display:none" onchange="previewFile(this)">
+            <div class="dropzone-icon" style="font-size:20px"><i class="bi bi-cloud-upload"></i></div>
+            <div class="dropzone-text" style="font-size:13px">Arrastra o <span class="dropzone-link">selecciona</span></div>
+            <div class="dropzone-hint">PDF, XLSX, PPTX, DOCX · Máx. 50 MB</div>
+            <div class="dz-preview-name" style="display:none;margin-top:6px;font-size:12px;color:var(--turquesa)"></div>
+          </div>
+          <div class="form-text mt-2">Esta es la propuesta que se entregó o entregará al cliente.</div>
+        </div>
+        <div class="modal-footer" style="border-color:var(--bg-border)">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-upload me-1"></i>Subir propuesta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
