@@ -365,7 +365,7 @@ def solicitudes():
     estatus_list_f = request.args.getlist('estatus')  # multi-select
     estatus        = estatus_list_f[0] if len(estatus_list_f)==1 else ''
     comercial_f = request.args.get('comercial','').strip()
-    ingeniero_f = request.args.get('ingeniero','aux_ingenieria','').strip()
+    ingeniero_f = request.args.get('ingeniero','').strip()
     tema_f      = request.args.get('tema','').strip()
 
     if folio:          q = q.filter(Solicitud.folio.ilike(f'%{folio}%'))
